@@ -1,0 +1,40 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://Space/SpaceStation.gd" id="1_station"]
+
+[sub_resource type="StandardMaterial3D" id="Mat_metal"]
+albedo_color = Color(0.76, 0.82, 0.90, 1)
+metallic = 0.65
+roughness = 0.35
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_core"]
+material = SubResource("Mat_metal")
+top_radius = 14.0
+bottom_radius = 18.0
+height = 95.0
+radial_segments = 14
+
+[sub_resource type="TorusMesh" id="TorusMesh_ring"]
+material = SubResource("Mat_metal")
+inner_radius = 48.0
+outer_radius = 62.0
+rings = 20
+ring_segments = 8
+
+[sub_resource type="StandardMaterial3D" id="Mat_beacon"]
+shading_mode = 0
+albedo_color = Color(0.25, 0.95, 0.88, 1)
+
+[node name="SpaceStation" type="Node3D"]
+script = ExtResource("1_station")
+
+[node name="CentralSpire" type="MeshInstance3D" parent="."]
+mesh = SubResource("CylinderMesh_core")
+
+[node name="RotatingRing" type="MeshInstance3D" parent="."]
+mesh = SubResource("TorusMesh_ring")
+
+[node name="BeaconCore" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.5, 0, 0, 0, 0.6, 0, 0, 0, 0.5, 0, 52.0, 0)
+material_override = SubResource("Mat_beacon")
+mesh = SubResource("CylinderMesh_core")

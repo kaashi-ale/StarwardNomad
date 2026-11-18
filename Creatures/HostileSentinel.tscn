@@ -1,0 +1,38 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://Creatures/HostileSentinel.gd" id="1_sentinel"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_s"]
+radius = 0.85
+
+[sub_resource type="StandardMaterial3D" id="Mat_drone"]
+albedo_color = Color(0.22, 0.24, 0.28, 1)
+metallic = 0.75
+roughness = 0.25
+
+[sub_resource type="SphereMesh" id="SphereMesh_shell"]
+material = SubResource("Mat_drone")
+radius = 0.78
+height = 1.56
+radial_segments = 10
+rings = 6
+
+[sub_resource type="StandardMaterial3D" id="Mat_optic"]
+shading_mode = 0
+albedo_color = Color(1.0, 0.22, 0.14, 1)
+
+[node name="HostileSentinel" type="CharacterBody3D"]
+collision_layer = 8
+collision_mask = 1
+script = ExtResource("1_sentinel")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("SphereShape3D_s")
+
+[node name="DroneBody" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_shell")
+
+[node name="EyeOptic" type="MeshInstance3D" parent="DroneBody"]
+transform = Transform3D(0.38, 0, 0, 0, 0.38, 0, 0, 0, 0.38, 0, 0, -0.68)
+material_override = SubResource("Mat_optic")
+mesh = SubResource("SphereMesh_shell")

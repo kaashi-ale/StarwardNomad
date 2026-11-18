@@ -1,0 +1,276 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://UI/TouchHUD.gd" id="1_hud"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_joy_base"]
+bg_color = Color(0.08, 0.14, 0.24, 0.42)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.45, 0.82, 1.0, 0.55)
+corner_radius_top_left = 80
+corner_radius_top_right = 80
+corner_radius_bottom_right = 80
+corner_radius_bottom_left = 80
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_joy_knob"]
+bg_color = Color(0.45, 0.88, 1.0, 0.78)
+corner_radius_top_left = 32
+corner_radius_top_right = 32
+corner_radius_bottom_right = 32
+corner_radius_bottom_left = 32
+
+[node name="TouchHUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="WaypointLayer" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TopBar" type="PanelContainer" parent="."]
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 48.0
+grow_horizontal = 2
+mouse_filter = 2
+
+[node name="HBox" type="HBoxContainer" parent="TopBar"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="LocationLabel" type="Label" parent="TopBar/HBox"]
+layout_mode = 2
+text = "Aurelia Prime — Superfície"
+
+[node name="TelemetryLabel" type="Label" parent="TopBar/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "ALT: 0m | VEL: 0m/s | FPS: 30"
+
+[node name="HealthBar" type="ProgressBar" parent="TopBar/HBox"]
+custom_minimum_size = Vector2(120, 22)
+layout_mode = 2
+value = 100.0
+
+[node name="EnergyBar" type="ProgressBar" parent="TopBar/HBox"]
+custom_minimum_size = Vector2(120, 22)
+layout_mode = 2
+value = 100.0
+
+[node name="SettingsButton" type="Button" parent="TopBar/HBox"]
+custom_minimum_size = Vector2(92, 34)
+layout_mode = 2
+text = "Qualidade"
+
+[node name="NotificationLabel" type="Label" parent="."]
+visible = false
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -280.0
+offset_top = 58.0
+offset_right = 280.0
+offset_bottom = 90.0
+grow_horizontal = 2
+horizontal_alignment = 1
+text = "Sistema Iniciado"
+
+[node name="JoystickZone" type="Control" parent="."]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 26.0
+offset_top = -196.0
+offset_right = 196.0
+offset_bottom = -26.0
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="JoystickBase" type="Panel" parent="JoystickZone"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBox_joy_base")
+
+[node name="Knob" type="Panel" parent="JoystickZone/JoystickBase"]
+layout_mode = 0
+offset_left = 55.0
+offset_top = 55.0
+offset_right = 115.0
+offset_bottom = 115.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBox_joy_knob")
+
+[node name="FootControls" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -360.0
+offset_top = -230.0
+offset_right = -20.0
+offset_bottom = -20.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="JumpButton" type="Button" parent="FootControls"]
+layout_mode = 0
+offset_left = 230.0
+offset_top = 120.0
+offset_right = 330.0
+offset_bottom = 196.0
+text = "PULAR / JET"
+
+[node name="FireButton" type="Button" parent="FootControls"]
+layout_mode = 0
+offset_left = 115.0
+offset_top = 120.0
+offset_right = 215.0
+offset_bottom = 196.0
+text = "ATIRAR"
+
+[node name="SprintButton" type="Button" parent="FootControls"]
+layout_mode = 0
+offset_left = 230.0
+offset_top = 34.0
+offset_right = 330.0
+offset_bottom = 104.0
+toggle_mode = true
+text = "CORRER"
+
+[node name="InteractButton" type="Button" parent="FootControls"]
+visible = false
+layout_mode = 0
+offset_left = 10.0
+offset_top = 34.0
+offset_right = 215.0
+offset_bottom = 104.0
+text = "ESCANEAR"
+
+[node name="BoardShipButton" type="Button" parent="FootControls"]
+visible = false
+layout_mode = 0
+offset_left = 10.0
+offset_top = -44.0
+offset_right = 330.0
+offset_bottom = 22.0
+text = "ENTRAR NA NAVE"
+
+[node name="ShipControls" type="Control" parent="."]
+visible = false
+layout_mode = 3
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -380.0
+offset_top = -240.0
+offset_right = -20.0
+offset_bottom = -20.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="ThrustButton" type="Button" parent="ShipControls"]
+layout_mode = 0
+offset_left = 245.0
+offset_top = 120.0
+offset_right = 350.0
+offset_bottom = 200.0
+text = "ACELERAR"
+
+[node name="BrakeButton" type="Button" parent="ShipControls"]
+layout_mode = 0
+offset_left = 130.0
+offset_top = 120.0
+offset_right = 235.0
+offset_bottom = 200.0
+text = "FREAR"
+
+[node name="AscendButton" type="Button" parent="ShipControls"]
+layout_mode = 0
+offset_left = 245.0
+offset_top = 34.0
+offset_right = 350.0
+offset_bottom = 106.0
+text = "SUBIR"
+
+[node name="DescendButton" type="Button" parent="ShipControls"]
+layout_mode = 0
+offset_left = 130.0
+offset_top = 34.0
+offset_right = 235.0
+offset_bottom = 106.0
+text = "DESCER"
+
+[node name="LandShipButton" type="Button" parent="ShipControls"]
+layout_mode = 0
+offset_left = 10.0
+offset_top = -44.0
+offset_right = 350.0
+offset_bottom = 22.0
+text = "POUSAR NAVE"
+
+[node name="ExitShipButton" type="Button" parent="ShipControls"]
+visible = false
+layout_mode = 0
+offset_left = 10.0
+offset_top = -44.0
+offset_right = 350.0
+offset_bottom = 22.0
+text = "SAIR DA NAVE"
+
+[node name="SettingsPanel" type="PanelContainer" parent="."]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -190.0
+offset_top = -140.0
+offset_right = 190.0
+offset_bottom = 140.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="SettingsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="SettingsPanel/VBox"]
+layout_mode = 2
+text = "Otimização Gráfica (Moto G04s)"
+horizontal_alignment = 1
+
+[node name="PresetLabel" type="Label" parent="SettingsPanel/VBox"]
+layout_mode = 2
+text = "Perfil de Qualidade:"
+
+[node name="PresetOption" type="OptionButton" parent="SettingsPanel/VBox"]
+layout_mode = 2
+
+[node name="FpsLabel" type="Label" parent="SettingsPanel/VBox"]
+layout_mode = 2
+text = "Limite de FPS:"
+
+[node name="FpsOption" type="OptionButton" parent="SettingsPanel/VBox"]
+layout_mode = 2
+
+[node name="CloseButton" type="Button" parent="SettingsPanel/VBox"]
+layout_mode = 2
+text = "Aplicar e Fechar"
