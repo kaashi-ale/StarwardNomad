@@ -1,0 +1,131 @@
+
+name: Build Starward Nomad Android APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      GODOT_VERSION: "4.3"
+      ANDROID_BUILD_TOOLS: "34.0.0"
+
+    steps:
+      - name: Download project
+        uses: actions/checkout@v4
+
+      - name: Check project files
+        run: |
+          test -f project.godot
+          test -f export_presets.cfg
+          echo "Project files found."
+
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android components
+        run: |
+          sdkmanager --licenses
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "cmdline-tools;latest" \
+            "ndk;23.2.8568313" \
+            "cmake;3.10.2.4988404"
+
+      - name: Download Godot 4.3
+        run: |
+          wget -q \
+            https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip \
+            -O godot.zip
+          unzip -q godot.zip -d godot
+          chmod +x godot/Godot_v4.3-stable_linux.x86_64
+          echo "$GITHUB_WORKSPACE/godot" >> "$GITHUB_PATH"
+          echo "GODOT_BIN=$GITHUB_WORKSPACE/godot/Godot_v4.3-stable_linux.x86_64" >> "$GITHUB_ENV"
+
+      - name: Install Godot Android export templates
+        run: |
+          wget -q \
+            https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz \
+            -O templates.tpz
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.3.stable"
+          mkdir templates_temp
+          unzip -q templates.tpz -d templates_temp
+          cp -a templates_temp/templates/. \
+            "$HOME/.local/share/godot/export_templates/4.3.stable/"
+          test -f "$HOME/.local/share/godot/export_templates/4.3.stable/android_debug.apk"
+          test -f "$HOME/.local/share/godot/export_templates/4.3.stable/android_release.apk"
+
+      - name: Configure Android signing
+        run: |
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+
+      - name: Verify Android tools
+        run: |
+          test -d "$ANDROID_HOME"
+          test -d "$JAVA_HOME"
+          test -x "$ANDROID_HOME/build-tools/34.0.0/apksigner"
+          test -f "$HOME/.android/debug.keystore"
+          java -version
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" --version
+
+      - name: Import Godot project
+        run: |
+          "$GODOT_BIN" --headless --editor --path . --import
+
+      - name: Export Android APK
+        run: |
+          mkdir -p build
+          "$GODOT_BIN" --headless --path . \
+            --export-debug "Android" build/StarwardNomad.apk
+
+      - name: Validate APK
+        run: |
+          APK="build/StarwardNomad.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/34.0.0/apksigner"
+
+          test -s "$APK"
+          unzip -t "$APK"
+          unzip -l "$APK" | grep -q "AndroidManifest.xml"
+          unzip -l "$APK" | grep -q "classes.dex"
+
+          if [ ! -x "$APKSIGNER" ]; then
+            echo "ERROR: apksigner not found or not executable."
+            exit 1
+          fi
+
+          "$APKSIGNER" verify --verbose "$APK"
+          echo "APK validation completed successfully."
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Starward-Nomad-Android-APK
+          path: build/StarwardNomad.apk
+          if-no-files-found: error
+          retention-days: 14
+          
