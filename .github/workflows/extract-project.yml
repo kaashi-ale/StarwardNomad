@@ -33,13 +33,12 @@ jobs:
             exit 1
           fi
 
-          cp -a extracted/StarwardNomad/. .
+          rsync -a --exclude='.github/' extracted/StarwardNomad/ ./
           rm -rf extracted
           rm "$ZIP_FILE"
 
           test -f project.godot
           test -f export_presets.cfg
-          test -f .github/workflows/build_android_apk.yml
 
       - name: Save extracted project
         run: |
