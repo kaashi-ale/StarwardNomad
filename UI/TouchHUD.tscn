@@ -211,6 +211,23 @@ theme_override_colors/font_color = Color(0.87, 0.97, 0.94, 1)
 theme_override_styles/normal = SubResource("StyleBox_action")
 text = "ENTRAR NA NAVE"
 
+[node name="RecallButton" type="Button" parent="FootControls"]
+layout_mode = 0
+offset_left = 77.0
+offset_top = -114.0
+offset_right = 330.0
+offset_bottom = -53.0
+theme_override_colors/font_color = Color(0.87, 0.97, 0.94, 1)
+theme_override_styles/normal = SubResource("StyleBox_action")
+text = "CHAMAR NAVE"
+
+[node name="ShipBeacon" type="Label" parent="WaypointLayer"]
+visible = false
+mouse_filter = 2
+text = "◆ Nave"
+theme_override_colors/font_color = Color(0.58, 1, 0.89, 1)
+theme_override_constants/outline_size = 6
+
 [node name="ShipControls" type="Control" parent="."]
 visible = false
 layout_mode = 3

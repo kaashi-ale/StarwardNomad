@@ -2,6 +2,12 @@
 
 Jogo 3D single-player de exploração espacial e planetária desenvolvido em **Godot Engine 4.3+ (GDScript)** com foco em desempenho estável no **Motorola Moto G04s** (Android 14, Unisoc T606, Mali-G57 MP1, 4 GB RAM).
 
+## Vale do Trevo e chamada da nave
+
+Em Aurelia Prime, siga à esquerda do pórtico para encontrar as casas de madeira, o poço e o curral do Vale do Trevo. Pressione **E** perto de Lina, Tomé ou Iara para conversar. No celular, toque em **Conversar** quando o nome aparecer.
+
+Se deixar a nave para trás, use **R** no PC ou toque em **CHAMAR NAVE** no celular. A distância aparece no HUD e um marcador aponta para a nave quando ela está no campo de visão. A nave recolhe o trem de pouso, sobe, voa até uma clareira e pousa perto de você. A chamada funciona no mesmo planeta. Se a área estiver obstruída, vá a um campo aberto e chame novamente.
+
 ## Terceira entrega — vida em Aurelia Prime
 
 Pressione **F5** no Godot 4.3. Caminhe na direção do pórtico para encontrar os pequenos herbívoros e vire à direita para chegar ao arco natural de pedra. Aproxime-se devagar dos animais para vê-los caminhar antes de se afastarem. Os troncos bloqueiam a passagem. Aurelia e Veridian ganharam textura de grama e tufos próximos ao chão. Olhe para cima para ver o céu com nuvens e escute como o vento diminui quando você sai da atmosfera.

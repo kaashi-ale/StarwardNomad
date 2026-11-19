@@ -1,6 +1,8 @@
 extends Node3D
 ## Dunes, copper fans and the remains of a survey gate around the first landing site.
 
+const VILLAGE := preload("res://Planets/AureliaVillage.gd")
+const VILLAGE_CENTER := Vector2(-29.0, 64.0)
 const MONOLITH := preload("res://Combat/AncientMonolith.tscn")
 
 var _planet: Node3D
@@ -17,6 +19,21 @@ func build(planet: Node3D, up: Vector3) -> void:
 	_build_grove()
 	_build_gate()
 	_build_stone_arch()
+	_build_village.call_deferred()
+
+
+func village_direction() -> Vector3:
+	return surface_at_offset(VILLAGE_CENTER).normalized()
+
+
+func _build_village() -> void:
+	await get_tree().physics_frame
+	var point := surface_at_offset(VILLAGE_CENTER)
+	var village := VILLAGE.new()
+	village.name = "ValeDoTrevo"
+	add_child(village)
+	village.transform = Transform3D(_surface_basis(point), point)
+	village.build(_planet)
 
 
 func _build_grove() -> void:
@@ -43,6 +60,8 @@ func _build_grove() -> void:
 		var offset := Vector2(cos(angle), sin(angle)) * radius
 		if absf(offset.x + 2.0) < 6.0 and offset.y > 0.0 and offset.y < 45.0:
 			offset.x += 9.0
+		if offset.distance_to(VILLAGE_CENTER) < 29.0:
+			offset.x -= 49.0
 		var point := surface_at_offset(offset)
 		var size := rng.randf_range(0.4, 2.5)
 		if i % 8 == 0:
@@ -66,7 +85,10 @@ func _build_grove() -> void:
 	for i in range(50):
 		var angle := rng.randf_range(0.0, TAU)
 		var radius := rng.randf_range(15.0, 103.0)
-		var point := surface_at_offset(Vector2(cos(angle), sin(angle)) * radius)
+		var offset := Vector2(cos(angle), sin(angle)) * radius
+		if offset.distance_to(VILLAGE_CENTER) < 25.0:
+			offset.x -= 44.0
+		var point := surface_at_offset(offset)
 		var height := rng.randf_range(0.55, 2.7)
 		for blade in range(3):
 			var local_rotation := Basis(Vector3.UP, angle + blade * TAU / 3.0) * Basis(Vector3.FORWARD, 0.49)

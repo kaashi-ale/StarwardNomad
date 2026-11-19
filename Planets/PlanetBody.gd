@@ -135,6 +135,10 @@ func set_sky_obscuration(weight: float) -> void:
 		_distant_proxy_inst.hide()
 
 
+func is_village_area(direction: Vector3) -> bool:
+	return is_instance_valid(_landing) and direction.distance_to(_landing.village_direction()) * data.radius < 34.0
+
+
 func is_aurelia() -> bool:
 	return planet_name == "Aurelia Prime"
 

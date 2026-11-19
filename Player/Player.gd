@@ -212,7 +212,7 @@ func try_board_ship() -> void:
 func _update_proximities() -> void:
 	if is_instance_valid(GameState.ship_node):
 		var d: float = global_position.distance_to(GameState.ship_node.global_position)
-		GameState.set_ship_proximity(d <= ship_board_distance)
+		GameState.set_ship_proximity(GameState.ship_node.is_landed and d <= ship_board_distance)
 
 	var nearest_obj: Node3D = null
 	var nearest_dist: float = 6.5

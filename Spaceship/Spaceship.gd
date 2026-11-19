@@ -2,6 +2,8 @@ extends CharacterBody3D
 ## Third-person starship supporting seamless surface takeoff, atmospheric flight,
 ## deep-space cruise, assisted planetary landing, and physical player boarding.
 
+const SHIP_RECALL := preload("res://Spaceship/ShipRecall.gd")
+
 @export var atmospheric_max_speed: float = 95.0
 @export var space_cruise_speed: float = 1450.0
 @export var max_landing_speed: float = 24.0
@@ -27,6 +29,9 @@ var _landing_clearance := SphereShape3D.new()
 var _thruster_glow: Node3D
 var _landing_gear: Node3D
 var _chase_cam: Camera3D
+var _recall: Node
+var _recall_requested := false
+var _recall_key_held := false
 
 
 func _ready() -> void:
@@ -37,13 +42,24 @@ func _ready() -> void:
 	_chase_cam = get_node_or_null("ChaseCameraPivot/Camera3D") as Camera3D
 	_camera_base = _chase_cam.get_parent().transform * _chase_cam.transform
 	_update_landing_gear_visual()
+	_recall = SHIP_RECALL.new()
+	add_child(_recall)
 
 
 func _physics_process(delta: float) -> void:
+	var recall_key := Input.is_physical_key_pressed(KEY_R)
+	var request := _recall_requested or (recall_key and not _recall_key_held)
+	_recall_key_held = recall_key
+	_recall_requested = false
 	if GameState.current_mode != GameState.ControlMode.IN_SHIP:
-		_thruster_glow.hide()
-		if is_instance_valid(GameState.audio_system):
-			GameState.audio_system.ship_thrust_level = 0.0
+		if request and not GameState.settings_open and is_instance_valid(GameState.player_node):
+			_recall.request(GameState.player_node)
+		if is_recalling():
+			_recall.advance(delta)
+		else:
+			_thruster_glow.hide()
+			if is_instance_valid(GameState.audio_system):
+				GameState.audio_system.ship_thrust_level = 0.0
 		_camera_tracking = false
 		return
 
@@ -149,14 +165,10 @@ func _physics_process(delta: float) -> void:
 	if surface_altitude < 9.0 and requested_velocity.dot(radial_up) < 0.0:
 		requested_velocity = requested_velocity.slide(radial_up) + radial_up * maxf(0.0, (4.0 - surface_altitude) * 3.0)
 	velocity = velocity.lerp(requested_velocity, 1.0 - exp(-delta * lerpf(9.0, 3.3, space_factor)))
-	_thruster_glow.visible = _current_speed > 4.0 or absf(_climb_speed) > 2.0
-	if is_instance_valid(GameState.audio_system):
-		var power := maxf(maxf(throttle, 0.0), absf(lift) * 0.65)
-		GameState.audio_system.ship_thrust_level = power * lerpf(0.52, 0.27, space_factor)
+	var power := maxf(maxf(throttle, 0.0), absf(lift) * 0.65)
 	var plume_length := clampf((_current_speed + absf(_climb_speed)) / 45.0, 0.35, 1.8)
-	for plume: MeshInstance3D in _thruster_glow.get_children():
-		plume.scale.y = plume_length
-		plume.position.z = 2.23 + plume_length * 0.75
+	update_thruster_visual(plume_length if _current_speed > 4.0 or absf(_climb_speed) > 2.0 else 0.0,
+		power * lerpf(0.52, 0.27, space_factor))
 
 	move_and_slide()
 	if get_slide_collision_count() > 0:
@@ -169,6 +181,24 @@ func _physics_process(delta: float) -> void:
 		can_land_now = landing_status.is_empty()
 		if can_land_now:
 			landing_status = "Pouso disponível"
+
+
+func recall_ship() -> void:
+	_recall_requested = true
+
+
+func is_recalling() -> bool:
+	return is_instance_valid(_recall) and _recall.phase != SHIP_RECALL.Phase.IDLE
+
+
+func update_thruster_visual(length: float, power: float) -> void:
+	_thruster_glow.visible = length > 0.0
+	if is_instance_valid(GameState.audio_system):
+		GameState.audio_system.ship_thrust_level = power
+	if length > 0.0:
+		for plume: MeshInstance3D in _thruster_glow.get_children():
+			plume.scale.y = length
+			plume.position.z = 2.23 + length * 0.75
 
 
 func _process(delta: float) -> void:
@@ -257,7 +287,7 @@ func _check_landing(planet: PlanetBody, ground: Dictionary) -> String:
 
 
 func board_ship(player: CharacterBody3D) -> void:
-	if GameState.current_mode == GameState.ControlMode.IN_SHIP:
+	if GameState.current_mode == GameState.ControlMode.IN_SHIP or not is_landed:
 		return
 	player.visible = false
 	GameState.set_ship_proximity(false)
@@ -285,9 +315,11 @@ func try_land_ship() -> bool:
 	if not reason.is_empty():
 		GameState.post_notification(reason, Color(1.0, 0.78, 0.3))
 		return false
-	var surf_pos: Vector3 = ground["position"]
-	var surf_normal: Vector3 = ground["normal"]
+	finish_landing(planet, ground["position"], ground["normal"])
+	return true
 
+
+func finish_landing(planet: PlanetBody, surf_pos: Vector3, surf_normal: Vector3) -> void:
 	var fwd: Vector3 = -global_transform.basis.z
 	fwd = (fwd - surf_normal * fwd.dot(surf_normal)).normalized()
 	if fwd.length_squared() < 0.001:
@@ -310,7 +342,6 @@ func try_land_ship() -> bool:
 	GameState.post_notification("Pouso concluído em %s!" % planet.planet_name, Color(0.35, 1.0, 0.65))
 	if is_instance_valid(GameState.audio_system):
 		GameState.audio_system.play_board_ship()
-	return true
 
 
 func exit_ship() -> void:

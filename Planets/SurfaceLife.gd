@@ -77,7 +77,7 @@ func _plant_tile(key: Vector3i, center: Vector3) -> MultiMeshInstance3D:
 	for sample in range(count):
 		var offset := right * rng.randf_range(-35.0, 35.0) + tangent * rng.randf_range(-35.0, 35.0)
 		var direction := (center * radius + offset).normalized()
-		if _planet.is_aurelia() and direction.distance_to(Vector3(0.180171244, 0.960913302, 0.210199785)) * radius < 48.0:
+		if _planet.is_aurelia() and (direction.distance_to(Vector3(0.180171244, 0.960913302, 0.210199785)) * radius < 48.0 or _planet.is_village_area(direction)):
 			continue
 		var surface: float = _planet.get_surface_radius_at_dir(direction)
 		var biome: int = _planet.get_biome(direction, surface - radius)
@@ -128,7 +128,7 @@ func _plant_ground_cover(tile: Node3D, center: Vector3, right: Vector3, tangent:
 		rng: RandomNumberGenerator, terrain: PhysicsDirectSpaceState3D) -> void:
 	if _grass_mesh == null:
 		_grass_mesh = _build_grass()
-	var count := roundi(340.0 * QualityManager.scatter_density_multiplier)
+	var count := roundi((535.0 if _planet.is_aurelia() else 340.0) * QualityManager.scatter_density_multiplier)
 	var batch := MultiMesh.new()
 	batch.transform_format = MultiMesh.TRANSFORM_3D
 	batch.use_colors = true
@@ -155,7 +155,7 @@ func _plant_ground_cover(tile: Node3D, center: Vector3, right: Vector3, tangent:
 			continue
 		if direction.dot(hit["normal"]) < 0.82:
 			continue
-		var size := rng.randf_range(0.55, 1.55)
+		var size := rng.randf_range(0.60, 1.58)
 		var basis := Basis.looking_at(tangent.slide(direction), direction).rotated(direction, rng.randf_range(0.0, TAU))
 		batch.set_instance_transform(planted, Transform3D(basis.scaled(Vector3.ONE * size), point - anchor - direction * 0.055))
 		batch.set_instance_color(planted, Color("#6d9a44").lerp(Color("#b1bc5d"), rng.randf_range(0.0, 0.75)))

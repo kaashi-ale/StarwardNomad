@@ -44,4 +44,4 @@ func _place_starting_expedition() -> void:
 		player.global_transform.basis = Basis(p_right, p_up, -p_fwd).orthonormalized()
 		player.global_position = p_pos + p_up * 0.38
 
-	GameState.post_notification("Aurelia Prime · Pórtico de pesquisa adiante. Arco de pedra à direita.", Color(0.4, 0.95, 1.0))
+	GameState.post_notification("Aurelia Prime · A vila fica à esquerda do pórtico.", Color(0.4, 0.95, 1.0))

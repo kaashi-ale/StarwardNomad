@@ -24,6 +24,8 @@ const FPS_OPTIONS := [30, 45, 60]
 
 @onready var foot_controls: Control = $FootControls
 @onready var ship_controls: Control = $ShipControls
+@onready var recall_button: Button = $FootControls/RecallButton
+@onready var ship_beacon: Label = $WaypointLayer/ShipBeacon
 @onready var board_ship_btn: Button = $FootControls/BoardShipButton
 @onready var interact_btn: Button = $FootControls/InteractButton
 @onready var land_ship_btn: Button = $ShipControls/LandShipButton
@@ -89,6 +91,7 @@ func _process(delta: float) -> void:
 		_waypoint_timer = 0.0
 		_update_planet_waypoints()
 		_update_navigation()
+		_update_ship_beacon()
 
 
 func _input(event: InputEvent) -> void:
@@ -193,6 +196,9 @@ func _reset_touch_inputs() -> void:
 
 func _setup_buttons() -> void:
 	# On-Foot buttons
+	recall_button.pressed.connect(func():
+		if is_instance_valid(GameState.ship_node):
+			GameState.ship_node.recall_ship())
 	var jump_btn := $FootControls/JumpButton as Button
 	jump_btn.button_down.connect(func():
 		GameState.mobile_jump_pressed = true
@@ -371,6 +377,27 @@ func _update_planet_waypoints() -> void:
 		lbl.position = screen_pos
 		lbl.modulate = t["color"]
 		lbl.text = "◆ %s (%dm)" % [t["name"], int(maxf(0.0, dist))]
+
+
+func _update_ship_beacon() -> void:
+	ship_beacon.hide()
+	var ship := GameState.ship_node
+	var explorer := GameState.player_node
+	if not foot_controls.visible or not is_instance_valid(ship) or not is_instance_valid(explorer):
+		return
+	var distance := roundi(explorer.global_position.distance_to(ship.global_position))
+	recall_button.disabled = ship.is_recalling()
+	var desktop := "R  ·  " if not OS.has_feature("mobile") else ""
+	recall_button.text = "A CAMINHO  ·  %d m" % distance if ship.is_recalling() else "%sCHAMAR NAVE  ·  %d m" % [desktop, distance]
+	var camera := get_viewport().get_camera_3d()
+	var position := ship.global_position + ship.global_basis.y * 4.0
+	if distance < 8 or distance > 850 or not is_instance_valid(camera) or camera.is_position_behind(position):
+		return
+	var projected := camera.unproject_position(position)
+	var bounds := get_viewport().get_visible_rect().size
+	if Rect2(Vector2(15, 60), bounds - Vector2(105, 132)).has_point(projected):
+		ship_beacon.position = projected - Vector2(27, 11)
+		ship_beacon.show()
 
 
 func _on_mode_changed(new_mode: int) -> void:
