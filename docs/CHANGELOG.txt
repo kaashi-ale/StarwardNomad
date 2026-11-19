@@ -1,0 +1,4 @@
+2026-11-19 | Bosque do Arco
+Alteração: reformulação da região entre o pórtico e o arco de Aurelia Prime, com árvores variadas, vegetação rasteira, trilha, clareira, pedras e troncos caídos.
+Objetivo: criar um trecho acolhedor para exploração a pé, mantendo a vila, a fauna, a nave e o perfil Econômico.
+Capturas: docs/screenshots/bosque-do-arco/
