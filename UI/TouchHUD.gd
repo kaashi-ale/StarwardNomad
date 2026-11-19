@@ -3,6 +3,8 @@ extends CanvasLayer
 ## drag region (excluding action buttons), context-aware On-Foot & Starship controls,
 ## 3D Planet Waypoint markers, and live Graphics Quality settings for Moto G04s.
 
+const FPS_OPTIONS := [30, 45, 60]
+
 @onready var location_label: Label = $TopBar/HBox/LocationLabel
 @onready var telemetry_label: Label = $TopBar/HBox/TelemetryLabel
 @onready var health_bar: ProgressBar = $TopBar/HBox/HealthBar
@@ -11,6 +13,8 @@ extends CanvasLayer
 
 @onready var joystick_base: Control = $JoystickZone/JoystickBase
 @onready var joystick_knob: Control = $JoystickZone/JoystickBase/Knob
+@onready var top_bar: Control = $TopBar
+@onready var settings_btn: Button = $TopBar/HBox/SettingsButton
 
 @onready var foot_controls: Control = $FootControls
 @onready var ship_controls: Control = $ShipControls
@@ -20,12 +24,14 @@ extends CanvasLayer
 @onready var exit_ship_btn: Button = $ShipControls/ExitShipButton
 
 @onready var settings_panel: PanelContainer = $SettingsPanel
-@onready var preset_option: OptionButton = $SettingsPanel/VBox/PresetOption
-@onready var fps_option: OptionButton = $SettingsPanel/VBox/FpsOption
+@onready var close_settings_btn: Button = $SettingsPanel/VBox/CloseButton
 @onready var waypoint_layer: Control = $WaypointLayer
 
 var _joy_touch_index: int = -1
 var _look_touch_index: int = -1
+var _button_touches: Dictionary = {}
+var _settings_buttons: Array[Button] = []
+var _held_ship_buttons: Array[Button] = []
 var _joy_radius: float = 68.0
 var _notif_timer: float = 0.0
 var _waypoint_timer: float = 0.0
@@ -42,6 +48,7 @@ func _ready() -> void:
 
 	_setup_buttons()
 	_setup_settings_ui()
+	get_window().focus_exited.connect(_reset_touch_inputs)
 	_on_mode_changed(GameState.current_mode)
 	GameState.emit_current_stats()
 
@@ -72,51 +79,71 @@ func _process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if settings_panel.visible:
-		return
-
 	if event is InputEventScreenTouch:
-		var touch := event as InputEventScreenTouch
-		var screen_w: float = get_viewport().get_visible_rect().size.x
-		if touch.pressed:
-			# Left 42% of screen = Virtual Joystick; Right 58% (excluding action buttons) = Camera Look
-			if touch.position.x < screen_w * 0.42 and _joy_touch_index == -1:
-				_joy_touch_index = touch.index
-				_update_joystick(touch.position)
-			elif touch.position.x >= screen_w * 0.42 and _look_touch_index == -1:
-				if not _is_touch_over_ui_buttons(touch.position):
-					_look_touch_index = touch.index
-		else:
-			if touch.index == _joy_touch_index:
-				_joy_touch_index = -1
-				_reset_joystick()
-			elif touch.index == _look_touch_index:
-				_look_touch_index = -1
-
+		_handle_screen_touch(event)
+		get_viewport().set_input_as_handled()
 	elif event is InputEventScreenDrag:
-		var drag := event as InputEventScreenDrag
-		if drag.index == _joy_touch_index:
-			_update_joystick(drag.position)
-		elif drag.index == _look_touch_index:
-			GameState.mobile_look_delta += drag.relative
-
-	# Desktop mouse fallback when holding right mouse button
-	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+		if event.index == _joy_touch_index:
+			_update_joystick(event.position)
+		elif event.index == _look_touch_index:
+			GameState.mobile_look_delta += event.relative
+		get_viewport().set_input_as_handled()
+	elif not settings_panel.visible and event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
 		GameState.mobile_look_delta += event.relative
 
 
-func _is_touch_over_ui_buttons(pos: Vector2) -> bool:
-	var top_bar := get_node_or_null("TopBar") as Control
-	if is_instance_valid(top_bar) and top_bar.get_global_rect().has_point(pos):
-		return true
+func _handle_screen_touch(touch: InputEventScreenTouch) -> void:
+	# Each finger keeps its original control until release or cancellation.
+	if touch.canceled or not touch.pressed:
+		var button := _button_touches.get(touch.index) as Button
+		if button != null:
+			_button_touches.erase(touch.index)
+			button.self_modulate = Color.WHITE
+			button.button_up.emit()
+			if not touch.canceled and not button.disabled and _touch_hits(button, touch.position):
+				if button.toggle_mode:
+					button.button_pressed = button.button_group != null or not button.button_pressed
+				button.pressed.emit()
+		elif touch.index == _joy_touch_index:
+			_joy_touch_index = -1
+			_reset_joystick()
+		elif touch.index == _look_touch_index:
+			_look_touch_index = -1
+		return
 
-	var active_group: Control = foot_controls if foot_controls.visible else ship_controls
-	if is_instance_valid(active_group):
-		for child in active_group.get_children():
-			if child is Control and child.visible:
-				if child.get_global_rect().grow(8.0).has_point(pos):
-					return true
-	return false
+	var button := _find_touch_button(touch.position)
+	if button != null:
+		if not button.disabled and button not in _button_touches.values():
+			_button_touches[touch.index] = button
+			button.self_modulate = Color(0.72, 0.88, 1.0)
+			button.button_down.emit()
+		return
+	if settings_panel.visible or _touch_hits(top_bar, touch.position):
+		return
+
+	var left_side := touch.position.x < get_viewport().get_visible_rect().size.x * 0.42
+	if left_side and _joy_touch_index == -1:
+		_joy_touch_index = touch.index
+		_update_joystick(touch.position)
+	elif not left_side and _look_touch_index == -1:
+		_look_touch_index = touch.index
+
+
+func _find_touch_button(pos: Vector2) -> Button:
+	if _touch_hits(settings_btn, pos):
+		return settings_btn
+
+	var active_group := foot_controls if foot_controls.visible else ship_controls
+	var buttons: Array = _settings_buttons if settings_panel.visible else active_group.get_children()
+	for button in buttons:
+		if button is Button and _touch_hits(button, pos):
+			return button
+	return null
+
+
+func _touch_hits(control: Control, pos: Vector2) -> bool:
+	var local_pos := control.get_global_transform_with_canvas().affine_inverse() * pos
+	return control.is_visible_in_tree() and Rect2(Vector2.ZERO, control.size).has_point(local_pos)
 
 
 func _update_joystick(touch_pos: Vector2) -> void:
@@ -132,6 +159,23 @@ func _update_joystick(touch_pos: Vector2) -> void:
 func _reset_joystick() -> void:
 	joystick_knob.position = (joystick_base.size * 0.5) - (joystick_knob.size * 0.5)
 	GameState.mobile_move_vector = Vector2.ZERO
+	GameState.mobile_ship_steer = Vector2.ZERO
+
+
+func _reset_touch_inputs() -> void:
+	for button in _button_touches.values():
+		button.self_modulate = Color.WHITE
+		button.button_up.emit()
+	_button_touches.clear()
+	_held_ship_buttons.clear()
+	_joy_touch_index = -1
+	_look_touch_index = -1
+	_reset_joystick()
+	GameState.mobile_look_delta = Vector2.ZERO
+	GameState.mobile_jump_pressed = false
+	GameState.mobile_fire_pressed = false
+	GameState.mobile_ship_throttle = 0.0
+	GameState.mobile_ship_vertical = 0.0
 
 
 func _setup_buttons() -> void:
@@ -148,7 +192,11 @@ func _setup_buttons() -> void:
 	sprint_btn.toggled.connect(func(pressed: bool): GameState.mobile_sprint_active = pressed)
 
 	var fire_btn := $FootControls/FireButton as Button
-	fire_btn.button_down.connect(func(): GameState.mobile_fire_pressed = true)
+	fire_btn.button_down.connect(func():
+		GameState.mobile_fire_pressed = true
+		if is_instance_valid(GameState.player_node):
+			GameState.player_node.fire_blaster()
+	)
 	fire_btn.button_up.connect(func(): GameState.mobile_fire_pressed = false)
 
 	interact_btn.pressed.connect(func():
@@ -162,21 +210,10 @@ func _setup_buttons() -> void:
 	)
 
 	# Spaceship buttons
-	var thrust_btn := $ShipControls/ThrustButton as Button
-	thrust_btn.button_down.connect(func(): GameState.mobile_ship_throttle = 1.0)
-	thrust_btn.button_up.connect(func(): GameState.mobile_ship_throttle = 0.0)
-
-	var brake_btn := $ShipControls/BrakeButton as Button
-	brake_btn.button_down.connect(func(): GameState.mobile_ship_throttle = -1.0)
-	brake_btn.button_up.connect(func(): GameState.mobile_ship_throttle = 0.0)
-
-	var ascend_btn := $ShipControls/AscendButton as Button
-	ascend_btn.button_down.connect(func(): GameState.mobile_ship_vertical = 1.0)
-	ascend_btn.button_up.connect(func(): GameState.mobile_ship_vertical = 0.0)
-
-	var descend_btn := $ShipControls/DescendButton as Button
-	descend_btn.button_down.connect(func(): GameState.mobile_ship_vertical = -1.0)
-	descend_btn.button_up.connect(func(): GameState.mobile_ship_vertical = 0.0)
+	_bind_ship_axis($ShipControls/ThrustButton, $ShipControls/BrakeButton,
+		func(value: float): GameState.mobile_ship_throttle = value)
+	_bind_ship_axis($ShipControls/AscendButton, $ShipControls/DescendButton,
+		func(value: float): GameState.mobile_ship_vertical = value)
 
 	land_ship_btn.pressed.connect(func():
 		if is_instance_valid(GameState.ship_node):
@@ -188,30 +225,57 @@ func _setup_buttons() -> void:
 			GameState.ship_node.exit_ship()
 	)
 
-	var settings_btn := $TopBar/HBox/SettingsButton as Button
-	settings_btn.pressed.connect(func(): settings_panel.visible = not settings_panel.visible)
+	settings_btn.pressed.connect(func():
+		if not settings_panel.visible:
+			_reset_touch_inputs()
+		settings_panel.visible = not settings_panel.visible
+	)
+
+
+func _bind_ship_axis(positive: Button, negative: Button, update: Callable) -> void:
+	var update_axis := func():
+		update.call(float(positive in _held_ship_buttons) - float(negative in _held_ship_buttons))
+	for button: Button in [positive, negative]:
+		button.button_down.connect(func():
+			if button not in _held_ship_buttons:
+				_held_ship_buttons.append(button)
+			update_axis.call()
+		)
+		button.button_up.connect(func():
+			_held_ship_buttons.erase(button)
+			update_axis.call()
+		)
 
 
 func _setup_settings_ui() -> void:
-	preset_option.clear()
-	preset_option.add_item("Baixo (Moto G04s)", QualityManager.Preset.LOW)
-	preset_option.add_item("Médio (Balanceado)", QualityManager.Preset.MEDIUM)
-	preset_option.add_item("Alto (Visual Máximo)", QualityManager.Preset.HIGH)
-	preset_option.select(QualityManager.current_preset)
-	preset_option.item_selected.connect(func(idx: int): QualityManager.apply_preset(idx))
-
-	fps_option.clear()
-	fps_option.add_item("30 FPS (Estável)", 0)
-	fps_option.add_item("45 FPS", 1)
-	fps_option.add_item("60 FPS", 2)
-	fps_option.select(0)
-	fps_option.item_selected.connect(func(idx: int):
-		var map := [30, 45, 60]
-		QualityManager.set_target_fps(map[idx])
+	var fps_row: HBoxContainer = $SettingsPanel/VBox/FpsOptions
+	_add_settings_choices($SettingsPanel/VBox/PresetOptions, ["Baixo", "Médio", "Alto"],
+		QualityManager.current_preset, QualityManager.apply_preset)
+	_add_settings_choices(fps_row, ["30 FPS", "45 FPS", "60 FPS"],
+		FPS_OPTIONS.find(QualityManager.target_fps),
+		func(index: int): QualityManager.set_target_fps(FPS_OPTIONS[index]))
+	QualityManager.quality_changed.connect(func(_preset: int):
+		var index := FPS_OPTIONS.find(QualityManager.target_fps)
+		if index >= 0:
+			var button := fps_row.get_child(index) as Button
+			button.button_pressed = true
 	)
+	_settings_buttons.append(close_settings_btn)
+	close_settings_btn.pressed.connect(func(): settings_panel.visible = false)
 
-	var close_btn := $SettingsPanel/VBox/CloseButton as Button
-	close_btn.pressed.connect(func(): settings_panel.visible = false)
+
+func _add_settings_choices(row: HBoxContainer, labels: Array, selected: int, on_selected: Callable) -> void:
+	var group := ButtonGroup.new()
+	for index in range(labels.size()):
+		var button := Button.new()
+		button.text = labels[index]
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.toggle_mode = true
+		button.button_group = group
+		row.add_child(button)
+		button.button_pressed = index == selected
+		button.pressed.connect(on_selected.bind(index))
+		_settings_buttons.append(button)
 
 
 func _update_planet_waypoints() -> void:
@@ -252,11 +316,9 @@ func _update_planet_waypoints() -> void:
 
 func _on_mode_changed(new_mode: int) -> void:
 	var on_foot: bool = (new_mode == GameState.ControlMode.ON_FOOT)
+	_reset_touch_inputs()
 	foot_controls.visible = on_foot
 	ship_controls.visible = not on_foot
-	GameState.mobile_ship_throttle = 0.0
-	GameState.mobile_ship_vertical = 0.0
-	_reset_joystick()
 
 
 func _on_altitude_updated(altitude: float, _ratio: float, loc_label: String) -> void:
