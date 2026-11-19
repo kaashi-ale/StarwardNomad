@@ -16,6 +16,7 @@ func build(planet: Node3D, up: Vector3) -> void:
 	_origin = up * _planet.get_surface_radius_at_dir(up)
 	_build_grove()
 	_build_gate()
+	_build_stone_arch()
 
 
 func _build_grove() -> void:
@@ -74,6 +75,51 @@ func _build_grove() -> void:
 			var index := i * 3 + blade
 			fans.set_instance_transform(index, Transform3D(orientation * Basis.from_scale(dimensions), point + orientation.y * height * 0.46))
 			fans.set_instance_color(index, Color("#a94d32").lerp(Color("#efaf63"), rng.randf()))
+
+
+func _build_stone_arch() -> void:
+	var point := surface_at_offset(Vector2(25.0, 61.0))
+	var arch := StaticBody3D.new()
+	arch.name = "AureliaStoneArch"
+	arch.collision_layer = 32
+	arch.collision_mask = 0
+	add_child(arch)
+	arch.transform = Transform3D(_surface_basis(point), point)
+
+	var stone := SphereMesh.new()
+	stone.radial_segments = 7
+	stone.rings = 3
+	var material := StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.roughness = 0.96
+	var rock_surface := SurfaceTool.new()
+	rock_surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	rock_surface.set_smooth_group(-1)
+	var arrays := stone.get_mesh_arrays()
+	var source: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	for i in range(7):
+		var angle := float(i) * PI / 6.0
+		var offset := Vector3(cos(angle) * 6.0, sin(angle) * 10.2, sin(angle * 2.0) * 0.75)
+		var scale := Vector3(5.5, 8.2, 5.5) if i == 0 or i == 6 else Vector3(6.15, 6.7, 4.65)
+		var tilt := Basis(Vector3.BACK, angle * 0.8)
+		var vertices := PackedVector3Array()
+		for vertex in source:
+			vertices.append(tilt * (vertex * scale) + offset)
+		for index in indices:
+			var rock_tint := Color("#5e6858").lerp(Color("#a2977c"), smoothstep(0.0, 11.8, vertices[index].y))
+			rock_surface.set_color(rock_tint.darkened(0.055 * float(i % 3)))
+			rock_surface.add_vertex(vertices[index])
+		var rock_shape := ConvexPolygonShape3D.new()
+		rock_shape.points = vertices
+		var hitbox := CollisionShape3D.new()
+		hitbox.shape = rock_shape
+		arch.add_child(hitbox)
+	rock_surface.generate_normals()
+	rock_surface.set_material(material)
+	var model := MeshInstance3D.new()
+	model.mesh = rock_surface.commit()
+	arch.add_child(model)
 
 
 func _build_gate() -> void:

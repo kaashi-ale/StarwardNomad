@@ -23,6 +23,8 @@ var _terrain_building := false
 var _terrain_chunks: Array[MeshInstance3D] = []
 var _chunk_directions: Array[Vector3] = []
 var _chunk_extents: Array[float] = []
+var _sky_obscuration := 0.0
+var _orbital_material: StandardMaterial3D
 var _distant_proxy_inst: MeshInstance3D
 var _terrain_collider: CollisionShape3D
 var _ocean_mesh_inst: MeshInstance3D
@@ -103,7 +105,7 @@ func _process(delta: float) -> void:
 		_terrain_mesh_inst.visible = near_detail
 		if near_detail:
 			_update_terrain_visibility(direction, altitude)
-	_distant_proxy_inst.visible = not (near_detail and is_instance_valid(_terrain_mesh_inst))
+	_distant_proxy_inst.visible = _sky_obscuration < 0.97 and not (near_detail and is_instance_valid(_terrain_mesh_inst))
 	if is_instance_valid(_ocean_mesh_inst):
 		_ocean_mesh_inst.visible = near_detail and is_instance_valid(_terrain_mesh_inst)
 
@@ -120,6 +122,17 @@ func _process(delta: float) -> void:
 
 	if is_instance_valid(_atmosphere_mesh_inst):
 		_atmosphere_mesh_inst.visible = dist > data.radius + data.atmosphere_height * 0.42 and dist <= (atmo_edge + 2600.0)
+
+
+func set_sky_obscuration(weight: float) -> void:
+	if not is_instance_valid(_orbital_material) or is_equal_approx(_sky_obscuration, weight):
+		return
+	_sky_obscuration = weight
+	var opacity := 1.0 - smoothstep(0.55, 0.97, weight)
+	_orbital_material.albedo_color.a = opacity
+	_orbital_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if opacity < 0.999 else BaseMaterial3D.TRANSPARENCY_DISABLED
+	if weight >= 0.97:
+		_distant_proxy_inst.hide()
 
 
 func is_aurelia() -> bool:
@@ -208,6 +221,7 @@ func _build_terrain(staggered := false) -> void:
 	texture_noise.frequency = 0.065
 	grain.noise = texture_noise
 	material.set_shader_parameter("surface_grain", grain)
+	material.set_shader_parameter("meadow", 1.0 if is_aurelia() else (0.82 if planet_name == "Veridian Mire" else 0.0))
 	_terrain_mesh_inst = Node3D.new()
 	_terrain_mesh_inst.name = "TerrainMesh"
 	add_child(_terrain_mesh_inst)
@@ -335,6 +349,7 @@ func _build_distant_proxy() -> void:
 	mat.vertex_color_use_as_albedo = true
 	mat.roughness = 0.92
 	mat.disable_fog = true
+	_orbital_material = mat
 	mesh.surface_set_material(0, mat)
 	_distant_proxy_inst = MeshInstance3D.new()
 	_distant_proxy_inst.name = "DistantProxyMesh"
@@ -426,6 +441,10 @@ void fragment() {
 func _activate_ecosystem(direction: Vector3) -> void:
 	_ecosystem_active = true
 	_ecosystem_direction = direction
+	if is_instance_valid(_landing) and direction.distance_to(AURELIA_START_DIRECTION) * data.radius < 175.0:
+		for offset: Vector2 in [Vector2(8, 15), Vector2(12, 19), Vector2(-10, 24)]:
+			var local_point: Vector3 = _landing.surface_at_offset(offset)
+			_spawn_creature(local_point.normalized(), 2.0, data.tree_canopy_color, 0.82 + offset.length() * 0.009)
 	var rng := RandomNumberGenerator.new()
 	var grid := Vector3i((direction * data.radius / 180.0).round())
 	rng.seed = data.seed_value + hash(grid)

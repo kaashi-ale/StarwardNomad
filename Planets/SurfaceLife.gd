@@ -2,9 +2,11 @@ extends Node3D
 ## Small, deterministic vegetation tiles around the observer on a cube sphere.
 
 const TILE_SIZE := 78.0
+const MEADOW_SHADER := preload("res://Planets/MeadowBlades.gdshader")
 var _planet: Node3D
 var _tiles: Dictionary = {}
 var _tree_mesh: ArrayMesh
+var _grass_mesh: ArrayMesh
 var _quality := -1
 
 
@@ -102,14 +104,13 @@ func _plant_tile(key: Vector3i, center: Vector3) -> MultiMeshInstance3D:
 		batch.set_instance_transform(planted, Transform3D(basis * Basis.from_scale(scale), position))
 		var leaf: Color = _planet.data.tree_canopy_color
 		batch.set_instance_color(planted, leaf.lerp(Color("#c5ae69"), rng.randf_range(0.0, 0.42)).lightened(0.21))
-		if size > 1.48:
-			var shape := CapsuleShape3D.new()
-			shape.radius = size * 0.26
-			shape.height = scale.y * 4.2
-			var collider := CollisionShape3D.new()
-			collider.shape = shape
-			trunks.add_child(collider)
-			collider.transform = Transform3D(basis, position + direction * shape.height * 0.5)
+		var shape := CylinderShape3D.new()
+		shape.radius = maxf(scale.x, scale.z) * 0.31
+		shape.height = scale.y * 4.12
+		var collider := CollisionShape3D.new()
+		collider.shape = shape
+		trunks.add_child(collider)
+		collider.transform = Transform3D(basis, position + direction * shape.height * 0.5)
 		planted += 1
 	batch.visible_instance_count = planted
 
@@ -118,7 +119,72 @@ func _plant_tile(key: Vector3i, center: Vector3) -> MultiMeshInstance3D:
 	tile.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	tile.add_child(trunks)
 	add_child(tile)
+	if _planet.is_aurelia() or _planet.planet_name == "Veridian Mire":
+		_plant_ground_cover(tile, center, right, tangent, rng, terrain)
 	return tile
+
+
+func _plant_ground_cover(tile: Node3D, center: Vector3, right: Vector3, tangent: Vector3,
+		rng: RandomNumberGenerator, terrain: PhysicsDirectSpaceState3D) -> void:
+	if _grass_mesh == null:
+		_grass_mesh = _build_grass()
+	var count := roundi(340.0 * QualityManager.scatter_density_multiplier)
+	var batch := MultiMesh.new()
+	batch.transform_format = MultiMesh.TRANSFORM_3D
+	batch.use_colors = true
+	batch.mesh = _grass_mesh
+	batch.instance_count = count
+	var planet_radius: float = _planet.data.radius
+	var anchor := center * planet_radius
+	var planted := 0
+	for i in range(count):
+		# Groups of tufts leave space for bare paths and expose the grass texture between blades.
+		var x := rng.randf_range(-37.5, 37.5)
+		var y := rng.randf_range(-37.5, 37.5)
+		if sin(x * 0.27) * cos(y * 0.23) < -0.28:
+			continue
+		var direction := (anchor + right * x + tangent * y).normalized()
+		var altitude: float = _planet.get_surface_radius_at_dir(direction)
+		var world: Vector3 = _planet.global_position + direction * altitude
+		var ray := PhysicsRayQueryParameters3D.create(world + direction * 55.0, world - direction * 55.0, 1)
+		var hit := terrain.intersect_ray(ray)
+		if hit.is_empty():
+			continue
+		var point: Vector3 = hit["position"] - _planet.global_position
+		if point.length() <= planet_radius + _planet.data.ocean_level_offset + 1.4:
+			continue
+		if direction.dot(hit["normal"]) < 0.82:
+			continue
+		var size := rng.randf_range(0.55, 1.55)
+		var basis := Basis.looking_at(tangent.slide(direction), direction).rotated(direction, rng.randf_range(0.0, TAU))
+		batch.set_instance_transform(planted, Transform3D(basis.scaled(Vector3.ONE * size), point - anchor - direction * 0.055))
+		batch.set_instance_color(planted, Color("#6d9a44").lerp(Color("#b1bc5d"), rng.randf_range(0.0, 0.75)))
+		planted += 1
+	batch.visible_instance_count = planted
+	var grass := MultiMeshInstance3D.new()
+	grass.multimesh = batch
+	grass.position = anchor
+	grass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	grass.visibility_range_end = 76.0 * QualityManager.detail_distance_multiplier
+	grass.visibility_range_end_margin = 6.0
+	tile.add_child(grass)
+
+
+func _build_grass() -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for blade in range(4):
+		var yaw := Basis(Vector3.UP, blade * TAU / 4.0)
+		var height := 0.31 + 0.07 * blade
+		surface.set_color(Color.WHITE)
+		surface.add_vertex(yaw * Vector3(-0.065, 0, 0.02))
+		surface.add_vertex(yaw * Vector3(0.065, 0, 0.02))
+		surface.add_vertex(yaw * Vector3(0.10, height, 0.12))
+	surface.generate_normals()
+	var material := ShaderMaterial.new()
+	material.shader = MEADOW_SHADER
+	surface.set_material(material)
+	return surface.commit()
 
 
 func _build_tree() -> ArrayMesh:
@@ -149,7 +215,8 @@ func _build_tree() -> ArrayMesh:
 		_append_piece(surface, crown, Vector3(0, 4.7, 0), Vector3(4.8, 1.9, 4.1), Color.WHITE)
 		_append_piece(surface, crown, Vector3(0.75, 3.9, 0.26), Vector3(2.7, 1.25, 2.6), Color("#aacc9c"))
 	else:
-		_append_piece(surface, crown, Vector3(0.48, 4.3, -0.27), Vector3(3.8, 3.1, 3.6), Color.WHITE)
+		_append_piece(surface, stem, Vector3(0.54, 3.08, -0.19), Vector3(0.71, 0.56, 0.72), Color("#8f6742"), -0.52)
+		_append_piece(surface, crown, Vector3(0.80, 4.31, -0.27), Vector3(3.8, 3.1, 3.6), Color.WHITE)
 		_append_piece(surface, crown, Vector3(-0.13, 5.65, 0.4), Vector3(3.1, 2.65, 2.7), Color("#f3f1b2"))
 	surface.generate_normals()
 	var material := StandardMaterial3D.new()
@@ -159,10 +226,11 @@ func _build_tree() -> ArrayMesh:
 	return surface.commit()
 
 
-func _append_piece(surface: SurfaceTool, mesh: PrimitiveMesh, position: Vector3, scale: Vector3, color: Color) -> void:
+func _append_piece(surface: SurfaceTool, mesh: PrimitiveMesh, position: Vector3, scale: Vector3, color: Color, tilt := 0.0) -> void:
 	var arrays := mesh.get_mesh_arrays()
 	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var rotation := Basis(Vector3.BACK, tilt)
 	for index in indices:
 		surface.set_color(color)
-		surface.add_vertex(vertices[index] * scale + position)
+		surface.add_vertex(rotation * (vertices[index] * scale) + position)
