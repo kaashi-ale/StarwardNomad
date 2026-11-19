@@ -1,130 +1,132 @@
-
 name: Build Starward Nomad Android APK
 
 on:
   workflow_dispatch:
-
+  push:
+    branches: ['**']
 permissions:
   contents: read
 
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     env:
-      GODOT_VERSION: "4.3"
-      ANDROID_BUILD_TOOLS: "34.0.0"
+      GODOT_VERSION: '4.3'
+      ANDROID_BUILD_TOOLS: '34.0.0'
+      ANDROID_API: '34'
 
     steps:
-      - name: Download project
+      - name: Checkout project
         uses: actions/checkout@v4
-
-      - name: Check project files
-        run: |
-          test -f project.godot
-          test -f export_presets.cfg
-          echo "Project files found."
+        with:
+          persist-credentials: false
 
       - name: Install Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
       - name: Install Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools'
+          packages: platform-tools platforms;android-34 build-tools;34.0.0
 
-      - name: Install Android components
+      - name: Install Godot and matching Android templates
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager \
-            "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "ndk;23.2.8568313" \
-            "cmake;3.10.2.4988404"
+          install_dir="$RUNNER_TEMP/godot"
+          template_dir="$HOME/.local/share/godot/export_templates/$GODOT_VERSION.stable"
+          asset_base="https://github.com/godotengine/godot/releases/download/$GODOT_VERSION-stable"
+          mkdir -p "$install_dir" "$template_dir"
+          curl --fail --location --retry 3 \
+            "$asset_base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" \
+            --output "$install_dir/editor.zip"
+          curl --fail --location --retry 3 \
+            "$asset_base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" \
+            --output "$install_dir/templates.tpz"
+          unzip -q "$install_dir/editor.zip" -d "$install_dir"
+          unzip -qj "$install_dir/templates.tpz" 'templates/android_debug.apk' -d "$template_dir"
+          test -s "$template_dir/android_debug.apk"
+          godot="$install_dir/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          chmod +x "$godot"
+          "$godot" --version
+          printf 'GODOT_BIN=%s\n' "$godot" >> "$GITHUB_ENV"
 
-      - name: Configure Android NDK
+      - name: Configure Android export and signing
+        env:
+          ANDROID_TEST_KEYSTORE_BASE64: ${{ secrets.ANDROID_TEST_KEYSTORE_BASE64 }}
         run: |
-          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/23.2.8568313" >> "$GITHUB_ENV"
-          test -d "$ANDROID_HOME/ndk/23.2.8568313"
+          build_tools="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS"
+          test -x "$build_tools/apksigner"
+          test -x "$build_tools/aapt"
+          test -x "$build_tools/zipalign"
+          test -f "$ANDROID_HOME/platforms/android-$ANDROID_API/android.jar"
+          test -x "$ANDROID_HOME/platform-tools/adb"
+          test -x "$JAVA_HOME/bin/java"
 
-      - name: Download Godot 4.3
-        run: |
-          wget -q \
-            https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip \
-            -O godot.zip
-          unzip -q godot.zip -d godot
-          chmod +x godot/Godot_v4.3-stable_linux.x86_64
-          echo "$GITHUB_WORKSPACE/godot" >> "$GITHUB_PATH"
-          echo "GODOT_BIN=$GITHUB_WORKSPACE/godot/Godot_v4.3-stable_linux.x86_64" >> "$GITHUB_ENV"
+          config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/godot"
+          mkdir -p "$config_dir"
+          cat > "$config_dir/editor_settings-$GODOT_VERSION.tres" <<SETTINGS
+          [gd_resource type="EditorSettings" format=3]
 
-      - name: Install Godot Android export templates
-        run: |
-          wget -q \
-            https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz \
-            -O templates.tpz
-          mkdir -p "$HOME/.local/share/godot/export_templates/4.3.stable"
-          mkdir templates_temp
-          unzip -q templates.tpz -d templates_temp
-          cp -a templates_temp/templates/. \
-            "$HOME/.local/share/godot/export_templates/4.3.stable/"
-          test -f "$HOME/.local/share/godot/export_templates/4.3.stable/android_debug.apk"
-          test -f "$HOME/.local/share/godot/export_templates/4.3.stable/android_release.apk"
+          [resource]
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          SETTINGS
 
-      - name: Configure Android signing
-        run: |
-          mkdir -p "$HOME/.android"
-          keytool -genkeypair -v \
-            -keystore "$HOME/.android/debug.keystore" \
-            -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+          umask 077
+          keystore="$RUNNER_TEMP/starward-debug.keystore"
+          if [[ -n "$ANDROID_TEST_KEYSTORE_BASE64" ]]; then
+            printf '%s' "$ANDROID_TEST_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+            echo 'Assinatura de teste persistente.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            keytool -genkeypair -keystore "$keystore" -storepass android \
+              -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+              -validity 10000 -dname "CN=Starward Nomad Android Debug"
+            echo 'Assinatura temporária. Se um APK anterior tiver outra assinatura, o Android pode exigir desinstalá-lo.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          keytool -list -keystore "$keystore" -storepass android -alias androiddebugkey > /dev/null
+          {
+            printf 'GODOT_ANDROID_KEYSTORE_DEBUG_PATH=%s\n' "$keystore"
+            echo 'GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey'
+            echo 'GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android'
+          } >> "$GITHUB_ENV"
 
-      - name: Verify Android tools
+      - name: Import project and start the main scene
         run: |
-          test -d "$ANDROID_HOME"
-          test -d "$JAVA_HOME"
-          test -x "$ANDROID_HOME/build-tools/34.0.0/apksigner"
-          test -f "$HOME/.android/debug.keystore"
-          java -version
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" --version
-
-      - name: Import Godot project
-        run: |
-          "$GODOT_BIN" --headless --editor --path . --import
+          log="$RUNNER_TEMP/godot-preflight.log"
+          "$GODOT_BIN" --headless --editor --path . --import 2>&1 | tee "$log"
+          "$GODOT_BIN" --headless --path . --quit-after 180 2>&1 | tee -a "$log"
+          if grep -Eq 'SCRIPT ERROR|Parse Error|Failed to load (script|scene|resource)' "$log"; then
+            echo "::error::Godot reported a script or resource error during preflight"
+            exit 1
+          fi
 
       - name: Export Android APK
         run: |
           mkdir -p build
-          "$GODOT_BIN" --headless --path . \
-            --export-debug "Android" build/StarwardNomad.apk
+          "$GODOT_BIN" --headless --path . --export-debug Android build/StarwardNomad.apk
 
-      - name: Validate APK
+      - name: Verify APK signature, package and native libraries
         run: |
-          APK="build/StarwardNomad.apk"
-          APKSIGNER="$ANDROID_HOME/build-tools/34.0.0/apksigner"
-
-          test -s "$APK"
-          unzip -t "$APK"
-          unzip -l "$APK" | grep -q "AndroidManifest.xml"
-          unzip -l "$APK" | grep -q "classes.dex"
-
-          if [ ! -x "$APKSIGNER" ]; then
-            echo "ERROR: apksigner not found or not executable."
-            exit 1
-          fi
-
-          "$APKSIGNER" verify --verbose "$APK"
-          echo "APK validation completed successfully."
+          apk=build/StarwardNomad.apk
+          build_tools="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS"
+          test -s "$apk"
+          unzip -tq "$apk"
+          unzip -Z1 "$apk" > "$RUNNER_TEMP/apk-files.txt"
+          for entry in AndroidManifest.xml classes.dex assets/project.binary \
+              lib/arm64-v8a/libgodot_android.so lib/armeabi-v7a/libgodot_android.so; do
+            grep -Fx "$entry" "$RUNNER_TEMP/apk-files.txt"
+          done
+          "$build_tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/apk-badging.txt"
+          grep -F "package: name='com.starwardnomad.explorer'" "$RUNNER_TEMP/apk-badging.txt"
+          "$build_tools/zipalign" -c 4 "$apk"
+          "$build_tools/apksigner" verify --verbose "$apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

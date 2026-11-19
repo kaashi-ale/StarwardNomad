@@ -30,15 +30,15 @@ Na segunda entrega, a amostra de perfil Baixo no Intel HD 2500 passou de **96 pa
 
 A homologação desta etapa é no **PC**. No próximo APK, vale repetir o percurso com três dedos (joystick, câmera e disparo), depois correr e pular com o joystick ativo. A meta de 30 FPS no Moto G04s depende de medição no aparelho.
 
-## Como Gerar o APK Android Sem Usar Computador (100% pelo Celular via GitHub Actions)
+## APK Android pelo GitHub Actions
 
-Este projeto já inclui o pipeline automatizado `.github/workflows/build_android_apk.yml` para compilar o `.apk` na nuvem gratuitamente usando apenas o navegador do seu celular:
+O workflow **Build Starward Nomad Android APK** gera um APK de teste assinado para ARM64 e ARMv7 a cada push. Para executá-lo pelo celular, abra **Actions → Build Starward Nomad Android APK → Run workflow**, selecione a branch que deseja testar e aguarde o resultado. Na execução concluída, baixe o artefato **Starward-Nomad-Android-APK** e extraia `StarwardNomad.apk`. O artefato fica disponível por 14 dias.
 
-1. No navegador do seu celular (Chrome), acesse [github.com](https://github.com) e crie um novo repositório (por exemplo, `starward-nomad`).
-2. Extraia este ZIP no celular e envie os arquivos do projeto (incluindo a pasta oculta `.github/workflows/build_android_apk.yml`, `project.godot`, `export_presets.cfg` e todas as pastas) para o repositório.
-3. Abra a aba **Actions** do repositório no GitHub e execute o workflow **Build Android APK (Zero-PC Cloud Build)**.
-4. O servidor Linux do GitHub baixará automaticamente a Godot 4.3, os *Export Templates* oficiais, o Android SDK 34, criará o *keystore* de depuração e gerará **`StarwardNomad.apk`**.
-5. Ao concluir (~2 minutos), toque no *Artifact* **`StarwardNomad-Android-APK`** na parte inferior da execução para baixar e instalar diretamente no Moto G04s.
+O build usa Godot 4.3 com o template oficial da mesma versão, Java 17 e Android SDK 34. O runner importa o projeto, inicia a cena principal em modo headless, exporta o preset `Android` e verifica o pacote, as bibliotecas ARM, o alinhamento e a assinatura do APK antes de disponibilizá-lo.
+
+Por padrão, cada execução gera uma chave de teste temporária. Para instalar novos APKs por cima de uma versão anterior, mantenha uma única chave de teste e configure o secret opcional `ANDROID_TEST_KEYSTORE_BASE64` no repositório com o arquivo codificado em Base64. O workflow usa o alias `androiddebugkey` e a senha de depuração `android`. Se o APK anterior usava outra chave, o Android pode exigir desinstalá-lo primeiro, o que pode apagar os dados locais. Guarde a chave fora do repositório.
+
+O workflow usa diretamente o projeto versionado. O fluxo **Extract Starward Nomad ZIP** pertence à importação inicial e é desnecessário para gerar APKs.
 
 ## Controles e Regras de Voo / Pouso
 
