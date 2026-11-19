@@ -276,6 +276,35 @@ offset_right = 350.0
 offset_bottom = 22.0
 text = "SAIR DA NAVE"
 
+[node name="DestinationButton" type="Button" parent="ShipControls"]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 34.0
+offset_right = 120.0
+offset_bottom = 106.0
+text = "DESTINO"
+
+[node name="CourseButton" type="Button" parent="ShipControls"]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 120.0
+offset_right = 120.0
+offset_bottom = 200.0
+text = "CURSO"
+
+[node name="NavigationPanel" type="PanelContainer" parent="."]
+visible = false
+offset_left = 18.0
+offset_top = 66.0
+offset_right = 310.0
+offset_bottom = 123.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBox_telemetry")
+
+[node name="Status" type="Label" parent="NavigationPanel"]
+layout_mode = 2
+mouse_filter = 2
+
 [node name="SettingsPanel" type="PanelContainer" parent="."]
 visible = false
 anchors_preset = 8
@@ -284,9 +313,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -190.0
-offset_top = -140.0
+offset_top = -195.0
 offset_right = 190.0
-offset_bottom = 140.0
+offset_bottom = 195.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -296,7 +325,7 @@ theme_override_constants/separation = 12
 
 [node name="Title" type="Label" parent="SettingsPanel/VBox"]
 layout_mode = 2
-text = "Otimização Gráfica (Moto G04s)"
+text = "Gráficos e áudio"
 horizontal_alignment = 1
 
 [node name="PresetLabel" type="Label" parent="SettingsPanel/VBox"]
@@ -312,6 +341,29 @@ text = "Limite de FPS:"
 
 [node name="FpsOptions" type="HBoxContainer" parent="SettingsPanel/VBox"]
 layout_mode = 2
+
+[node name="AudioLabel" type="Label" parent="SettingsPanel/VBox"]
+layout_mode = 2
+text = "Volume do jogo"
+
+[node name="AudioOptions" type="HBoxContainer" parent="SettingsPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Lower" type="Button" parent="SettingsPanel/VBox/AudioOptions"]
+custom_minimum_size = Vector2(50, 44)
+text = "−"
+
+[node name="Level" type="Label" parent="SettingsPanel/VBox/AudioOptions"]
+size_flags_horizontal = 3
+horizontal_alignment = 1
+
+[node name="Raise" type="Button" parent="SettingsPanel/VBox/AudioOptions"]
+custom_minimum_size = Vector2(50, 44)
+text = "+"
+
+[node name="Mute" type="Button" parent="SettingsPanel/VBox/AudioOptions"]
+custom_minimum_size = Vector2(115, 44)
 
 [node name="CloseButton" type="Button" parent="SettingsPanel/VBox"]
 layout_mode = 2

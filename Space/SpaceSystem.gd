@@ -52,6 +52,7 @@ func get_navigation_targets() -> Array[Dictionary]:
 		if is_instance_valid(p) and p.data != null:
 			targets.append({
 				"name": p.planet_name,
+				"body": p,
 				"position": p.global_position,
 				"color": p.data.atmosphere_rim,
 				"radius": p.data.radius
@@ -83,7 +84,7 @@ func _build_star() -> void:
 	var sun_inst := MeshInstance3D.new()
 	sun_inst.name = "CentralStar"
 	sun_inst.mesh = sun_mesh
-	sun_inst.position = Vector3(-9500.0, 4200.0, -12000.0)
+	sun_inst.position = Vector3(-26000.0, 12000.0, -33500.0)
 	sun_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(sun_inst)
 
@@ -102,7 +103,7 @@ func _build_planets_staggered() -> void:
 		return
 
 	# Build starting world immediately so first frame renders with ground ready
-	_spawn_single_planet(presets[0], placements[0])
+	_spawn_single_planet(presets[0], Vector3.DOWN * presets[0].radius)
 
 	# Build remaining worlds 1 per frame to avoid Android startup freeze / ANR
 	if presets.size() > 1:
@@ -114,7 +115,7 @@ func _spawn_remaining_planets(presets: Array[PlanetData], placements: Array[Vect
 		if not is_inside_tree():
 			return
 		await get_tree().process_frame
-		_spawn_single_planet(presets[i], placements[i])
+		_spawn_single_planet(presets[i], placements[i] * 2.9)
 
 
 func _spawn_single_planet(preset: PlanetData, local_pos: Vector3) -> void:
@@ -130,7 +131,7 @@ func _spawn_single_planet(preset: PlanetData, local_pos: Vector3) -> void:
 func _build_orbital_station() -> void:
 	var station := STATION_SCENE.instantiate()
 	add_child(station)
-	station.position = Vector3(1650.0, 520.0, -1450.0)
+	station.position = Vector3(4220.0, 970.0, -3830.0)
 	space_landmarks.append({
 		"name": "Estação Helios-7",
 		"node": station
@@ -138,7 +139,7 @@ func _build_orbital_station() -> void:
 
 
 func _build_asteroid_belt() -> void:
-	var count: int = 240
+	var count: int = 100
 	var rock := SphereMesh.new()
 	rock.radius = 12.0
 	rock.height = 18.0
@@ -161,7 +162,7 @@ func _build_asteroid_belt() -> void:
 
 	for i in range(count):
 		var angle: float = rng.randf_range(0.0, TAU)
-		var dist: float = rng.randf_range(2100.0, 5600.0)
+		var dist: float = rng.randf_range(6900.0, 14200.0)
 		var pos := Vector3(
 			cos(angle) * dist,
 			rng.randf_range(-450.0, 950.0),

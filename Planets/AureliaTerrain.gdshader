@@ -1,4 +1,5 @@
 shader_type spatial;
+render_mode vertex_lighting, diffuse_lambert;
 
 uniform sampler2D surface_grain : hint_default_white, filter_linear_mipmap, repeat_enable;
 varying vec3 ground_position;

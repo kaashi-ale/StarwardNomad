@@ -2,8 +2,8 @@ extends MultiMeshInstance3D
 ## Sky-locked procedural starfield using a single MultiMesh draw call.
 ## Fades smoothly when descending into bright daytime planetary atmospheres.
 
-@export var star_count: int = 850
-@export var sky_radius: float = 3800.0
+@export var star_count: int = 460
+@export var sky_radius: float = 51000.0
 
 var _star_mat: StandardMaterial3D
 
@@ -28,7 +28,7 @@ func set_space_visibility(space_factor: float) -> void:
 
 func _build_stars() -> void:
 	var quad := QuadMesh.new()
-	quad.size = Vector2(14.0, 14.0)
+	quad.size = Vector2(115.0, 115.0)
 
 	_star_mat = StandardMaterial3D.new()
 	_star_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

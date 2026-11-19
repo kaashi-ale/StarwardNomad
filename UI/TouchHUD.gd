@@ -27,6 +27,9 @@ const FPS_OPTIONS := [30, 45, 60]
 @onready var close_settings_btn: Button = $SettingsPanel/VBox/CloseButton
 @onready var waypoint_layer: Control = $WaypointLayer
 
+@onready var nav_panel: PanelContainer = $NavigationPanel
+@onready var nav_status: Label = $NavigationPanel/Status
+
 var _joy_touch_index: int = -1
 var _look_touch_index: int = -1
 var _button_touches: Dictionary = {}
@@ -50,6 +53,7 @@ func _ready() -> void:
 		board_ship_btn.text = "E  ·  EMBARCAR"
 	_setup_buttons()
 	_setup_settings_ui()
+	_set_settings_open(false)
 	get_window().focus_exited.connect(_reset_touch_inputs)
 	_on_mode_changed(GameState.current_mode)
 	GameState.emit_current_stats()
@@ -78,6 +82,7 @@ func _process(delta: float) -> void:
 	if _waypoint_timer >= 0.05:
 		_waypoint_timer = 0.0
 		_update_planet_waypoints()
+		_update_navigation()
 
 
 func _input(event: InputEvent) -> void:
@@ -212,6 +217,8 @@ func _setup_buttons() -> void:
 	)
 
 	# Spaceship buttons
+	$ShipControls/DestinationButton.pressed.connect(func(): GameState.ship_node.cycle_target())
+	$ShipControls/CourseButton.pressed.connect(func(): GameState.ship_node.toggle_navigation_assist())
 	_bind_ship_axis($ShipControls/ThrustButton, $ShipControls/BrakeButton,
 		func(value: float): GameState.mobile_ship_throttle = value)
 	_bind_ship_axis($ShipControls/AscendButton, $ShipControls/DescendButton,
@@ -227,11 +234,7 @@ func _setup_buttons() -> void:
 			GameState.ship_node.exit_ship()
 	)
 
-	settings_btn.pressed.connect(func():
-		if not settings_panel.visible:
-			_reset_touch_inputs()
-		settings_panel.visible = not settings_panel.visible
-	)
+	settings_btn.pressed.connect(func(): _set_settings_open(not settings_panel.visible))
 
 
 func _bind_ship_axis(positive: Button, negative: Button, update: Callable) -> void:
@@ -251,8 +254,8 @@ func _bind_ship_axis(positive: Button, negative: Button, update: Callable) -> vo
 
 func _setup_settings_ui() -> void:
 	var fps_row: HBoxContainer = $SettingsPanel/VBox/FpsOptions
-	_add_settings_choices($SettingsPanel/VBox/PresetOptions, ["Baixo", "Médio", "Alto"],
-		QualityManager.current_preset, QualityManager.apply_preset)
+	_add_settings_choices($SettingsPanel/VBox/PresetOptions, ["Baixo", "Médio", "Alto", "Econômico"],
+		QualityManager.current_preset, QualityManager.select_preset)
 	_add_settings_choices(fps_row, ["30 FPS", "45 FPS", "60 FPS"],
 		FPS_OPTIONS.find(QualityManager.target_fps),
 		func(index: int): QualityManager.set_target_fps(FPS_OPTIONS[index]))
@@ -262,8 +265,51 @@ func _setup_settings_ui() -> void:
 			var button := fps_row.get_child(index) as Button
 			button.button_pressed = true
 	)
+	var audio_row := $SettingsPanel/VBox/AudioOptions
+	var lower: Button = audio_row.get_node("Lower")
+	var raise_volume: Button = audio_row.get_node("Raise")
+	var mute: Button = audio_row.get_node("Mute")
+	var refresh_volume := func():
+		audio_row.get_node("Level").text = "%d%%" % QualityManager.volume_percent
+		mute.text = "Reativar som" if QualityManager.sound_muted else "Silenciar"
+		lower.disabled = QualityManager.volume_percent == 0
+		raise_volume.disabled = QualityManager.volume_percent == 100
+	lower.pressed.connect(func():
+		QualityManager.set_audio(QualityManager.volume_percent - 10, QualityManager.sound_muted)
+		refresh_volume.call())
+	raise_volume.pressed.connect(func():
+		QualityManager.set_audio(QualityManager.volume_percent + 10, QualityManager.sound_muted)
+		refresh_volume.call())
+	mute.pressed.connect(func():
+		QualityManager.set_audio(QualityManager.volume_percent, not QualityManager.sound_muted)
+		refresh_volume.call())
+	_settings_buttons.append_array([lower, raise_volume, mute])
+	refresh_volume.call()
 	_settings_buttons.append(close_settings_btn)
-	close_settings_btn.pressed.connect(func(): settings_panel.visible = false)
+	close_settings_btn.pressed.connect(func(): _set_settings_open(false))
+
+
+func _set_settings_open(open: bool) -> void:
+	if open:
+		_reset_touch_inputs()
+	settings_panel.visible = open
+	GameState.settings_open = open
+
+
+func _update_navigation() -> void:
+	if not nav_panel.visible or not is_instance_valid(GameState.ship_node):
+		return
+	var ship := GameState.ship_node
+	var target: Node3D = ship.navigation_target
+	var course := "Escolha um destino"
+	if is_instance_valid(target):
+		var distance := ship.global_position.distance_to(target.global_position) - float(target.data.radius)
+		var direction := ship.global_position.direction_to(target.global_position)
+		var bearing := rad_to_deg((-ship.global_basis.z).angle_to(direction))
+		course = "%s  ·  %.1f km  ·  %d°" % [target.planet_name, maxf(0.0, distance) / 1000.0, roundi(bearing)]
+	var assist := "  ·  Curso assistido" if ship.navigation_assist else ""
+	nav_status.text = "%s%s\n%s" % [course, assist, ship.landing_status]
+	$ShipControls/CourseButton.modulate = Color("#8ff0cf") if ship.navigation_assist else Color.WHITE
 
 
 func _add_settings_choices(row: HBoxContainer, labels: Array, selected: int, on_selected: Callable) -> void:
@@ -326,6 +372,7 @@ func _on_mode_changed(new_mode: int) -> void:
 	$AimPoint.visible = on_foot
 	foot_controls.visible = on_foot
 	ship_controls.visible = not on_foot
+	nav_panel.visible = not on_foot
 
 
 func _on_altitude_updated(altitude: float, _ratio: float, loc_label: String) -> void:
@@ -333,6 +380,7 @@ func _on_altitude_updated(altitude: float, _ratio: float, loc_label: String) -> 
 	var spd: float = 0.0
 	if GameState.current_mode == GameState.ControlMode.IN_SHIP and is_instance_valid(GameState.ship_node):
 		spd = GameState.ship_node.velocity.length()
+		altitude = maxf(0.0, GameState.ship_node.surface_altitude)
 	elif is_instance_valid(GameState.player_node):
 		spd = GameState.player_node.velocity.length()
 	telemetry_label.text = "ALT: %dm | VEL: %dm/s | FPS: %d" % [int(altitude), int(spd), Engine.get_frames_per_second()]

@@ -9,6 +9,9 @@ var _world_env: WorldEnvironment
 var _sky_mat: ProceduralSkyMaterial
 var _starfield: Node3D
 var _update_accum: float = 0.0
+var _last_sky_planet: Node3D
+var _last_sky_weight := -1.0
+var _last_sky_up := Vector3.ZERO
 
 var _space_top := Color(0.01, 0.015, 0.035)
 var _space_horizon := Color(0.03, 0.05, 0.11)
@@ -25,7 +28,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_update_accum += delta
-	if _update_accum < 0.05:
+	if _update_accum < 0.10:
 		return
 	_update_accum = 0.0
 
@@ -37,7 +40,7 @@ func _process(delta: float) -> void:
 		return
 
 	var nearest_info: Dictionary = GameState.space_system.get_nearest_planet_info(focus.global_position)
-	var planet: Node3D = nearest_info.get("planet", null)
+	var planet: PlanetBody = nearest_info.get("planet", null)
 	var altitude: float = nearest_info.get("altitude", 9999.0)
 	var atmo_height: float = nearest_info.get("atmosphere_height", 300.0)
 
@@ -57,7 +60,13 @@ func _process(delta: float) -> void:
 
 		var loc_label: String = planet.planet_name
 		if space_ratio < 0.22:
-			loc_label += " — Superfície"
+			if GameState.current_mode == GameState.ControlMode.ON_FOOT:
+				var up := planet.global_position.direction_to(focus.global_position)
+				var ground_height := planet.get_surface_radius_at_dir(up) - planet.data.radius
+				loc_label += " · " + planet.data.biome_names[planet.get_biome(up, ground_height)]
+				altitude -= ground_height
+			else:
+				loc_label += " — Superfície"
 		elif space_ratio < 0.85:
 			loc_label += " — Atmosfera"
 		elif space_ratio < 1.0:
@@ -68,25 +77,29 @@ func _process(delta: float) -> void:
 		GameState.set_active_planet(planet if space_ratio < 1.0 else null, planet.planet_name)
 		GameState.altitude_updated.emit(maxf(0.0, altitude), space_ratio, loc_label)
 
-	if _sky_mat:
-		_sky_mat.sky_top_color = sky_top
-		_sky_mat.sky_horizon_color = sky_horizon
-		_sky_mat.ground_bottom_color = ground_col
-		_sky_mat.ground_horizon_color = sky_horizon
-
 	var env := _world_env.environment
+	var sky_planet := planet if atmo_weight > 0.005 else null
+	if sky_planet != _last_sky_planet or absf(atmo_weight - _last_sky_weight) > 0.018:
+		if _sky_mat:
+			_sky_mat.sky_top_color = sky_top
+			_sky_mat.sky_horizon_color = sky_horizon
+			_sky_mat.ground_bottom_color = ground_col
+			_sky_mat.ground_horizon_color = sky_horizon
+		env.ambient_light_color = Color(0.22, 0.26, 0.35).lerp(sky_horizon, atmo_weight * 0.75)
+		env.ambient_light_energy = lerpf(0.42, 0.68, atmo_weight)
+		env.fog_enabled = atmo_weight > 0.005
+		env.fog_light_color = sky_horizon
+		env.fog_density = 0.00235 * atmo_weight
+		env.fog_sky_affect = 0.0
+		_last_sky_planet = sky_planet
+		_last_sky_weight = atmo_weight
 	if atmo_weight > 0.005 and is_instance_valid(planet):
 		var radial_up := planet.global_position.direction_to(focus.global_position)
-		env.sky_rotation = Basis(Quaternion(Vector3.UP, radial_up)).get_euler()
+		if radial_up.distance_squared_to(_last_sky_up) > 0.00006:
+			env.sky_rotation = Basis(Quaternion(Vector3.UP, radial_up)).get_euler()
+			_last_sky_up = radial_up
 	var belt := GameState.space_system.get_node_or_null("AsteroidBelt") as MultiMeshInstance3D
 	if is_instance_valid(belt):
 		belt.visible = space_ratio > 0.63
-	env.ambient_light_color = Color(0.22, 0.26, 0.35).lerp(sky_horizon, atmo_weight * 0.75)
-	env.ambient_light_energy = lerpf(0.42, 0.68, atmo_weight)
-	env.fog_enabled = atmo_weight > 0.005
-	env.fog_light_color = sky_horizon
-	env.fog_density = 0.0028 * atmo_weight
-	env.fog_sky_affect = 0.0
-
 	if is_instance_valid(_starfield) and _starfield.has_method("set_space_visibility"):
 		_starfield.set_space_visibility(space_ratio)

@@ -15,6 +15,7 @@ signal stats_updated(health: float, max_health: float, energy: float, max_energy
 signal notification_requested(message: String, color: Color)
 signal discovery_unlocked(planet_name: String, item_name: String)
 
+var settings_open := false
 var current_mode: int = ControlMode.ON_FOOT
 var active_planet: Node3D = null
 var active_planet_name: String = "Aurelia Prime"

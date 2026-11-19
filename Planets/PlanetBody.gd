@@ -18,17 +18,23 @@ var planet_name: String = "Planet"
 
 var _noise: FastNoiseLite
 var _detail_noise: FastNoiseLite
-var _terrain_mesh_inst: MeshInstance3D
+var _terrain_mesh_inst: Node3D
+var _terrain_building := false
+var _terrain_chunks: Array[MeshInstance3D] = []
+var _chunk_directions: Array[Vector3] = []
+var _chunk_extents: Array[float] = []
 var _distant_proxy_inst: MeshInstance3D
 var _terrain_collider: CollisionShape3D
 var _ocean_mesh_inst: MeshInstance3D
 var _atmosphere_mesh_inst: MeshInstance3D
 
-var _flora_multimesh: MultiMeshInstance3D
-var _rock_multimesh: MultiMeshInstance3D
+const SURFACE_LIFE := preload("res://Planets/SurfaceLife.gd")
+var _surface_life: Node3D
+var _moisture := FastNoiseLite.new()
+var _ecosystem_direction := Vector3.ZERO
 var _ecosystem_root: Node3D
 var _ecosystem_active: bool = false
-var _check_timer: float = 0.0
+var _check_timer: float = 0.45
 
 
 func initialize(planet_data: PlanetData) -> void:
@@ -50,12 +56,19 @@ func initialize(planet_data: PlanetData) -> void:
 	_detail_noise.fractal_octaves = 2
 	_detail_noise.frequency = data.noise_frequency * 4.5
 
-	_build_terrain()
+	_moisture.seed = data.seed_value + 81
+	_moisture.frequency = 0.008
+	_moisture.fractal_octaves = 2
 	_build_distant_proxy()
+	if is_aurelia():
+		_build_terrain()
 	if data.has_ocean:
 		_build_ocean()
 	_build_atmosphere_shell()
-	_build_scatter_multimeshes()
+	_surface_life = SURFACE_LIFE.new()
+	_surface_life.name = "SurfaceLife"
+	add_child(_surface_life)
+	_surface_life.initialize(self)
 
 	if is_aurelia():
 		_landing = AURELIA_LANDING.new()
@@ -81,25 +94,30 @@ func _process(delta: float) -> void:
 	var dist: float = global_position.distance_to(focus.global_position)
 	var atmo_edge: float = data.radius + data.atmosphere_height
 
-	# 1. Ecosystem lifecycle (spawns only inside/near atmosphere)
-	var activation_radius: float = atmo_edge + 160.0
-	if dist <= activation_radius and not _ecosystem_active:
-		_activate_ecosystem()
-	elif dist > activation_radius + 140.0 and _ecosystem_active:
-		_deactivate_ecosystem()
-
-	# 2. 2-tier Terrain LOD + Overdraw Reduction for Mali-G57 MP1
-	var near_detail: bool = dist <= (atmo_edge + 550.0)
+	var direction := global_position.direction_to(focus.global_position)
+	var altitude := dist - data.radius
+	var near_detail := dist < atmo_edge + 1100.0
+	if near_detail and not _terrain_building and not is_instance_valid(_terrain_mesh_inst):
+		_build_terrain(true)
 	if is_instance_valid(_terrain_mesh_inst):
 		_terrain_mesh_inst.visible = near_detail
-	if is_instance_valid(_distant_proxy_inst):
-		_distant_proxy_inst.visible = not near_detail
+		if near_detail:
+			_update_terrain_visibility(direction, altitude)
+	_distant_proxy_inst.visible = not (near_detail and is_instance_valid(_terrain_mesh_inst))
 	if is_instance_valid(_ocean_mesh_inst):
-		_ocean_mesh_inst.visible = near_detail
-	if is_instance_valid(_flora_multimesh):
-		_flora_multimesh.visible = near_detail
-	if is_instance_valid(_rock_multimesh):
-		_rock_multimesh.visible = near_detail
+		_ocean_mesh_inst.visible = near_detail and is_instance_valid(_terrain_mesh_inst)
+
+	var near_surface := altitude < 210.0 and is_instance_valid(_terrain_mesh_inst)
+	_surface_life.visible = near_surface
+	if near_surface:
+		_surface_life.update_tiles(direction)
+	var exploring: bool = near_surface and (GameState.current_mode == GameState.ControlMode.ON_FOOT or GameState.ship_node.is_landed)
+	if exploring and (not _ecosystem_active or direction.distance_to(_ecosystem_direction) * data.radius > 255.0):
+		_deactivate_ecosystem()
+		_activate_ecosystem(direction)
+	elif not near_surface and _ecosystem_active:
+		_deactivate_ecosystem()
+
 	if is_instance_valid(_atmosphere_mesh_inst):
 		_atmosphere_mesh_inst.visible = dist > data.radius + data.atmosphere_height * 0.42 and dist <= (atmo_edge + 2600.0)
 
@@ -120,9 +138,9 @@ func get_surface_radius_at_dir(unit_dir: Vector3) -> float:
 		var site := AURELIA_START_DIRECTION
 		var site_distance := site.distance_to(dir) * data.radius
 		var shelf := 9.0 + n1 * 3.2 + n2 * 9.0
-		var ridge_distance := (site + Vector3(0.18, -0.044, 0.10)).normalized().distance_to(dir) * data.radius
+		var ridge_distance := (site + Vector3(0.055, -0.013, 0.032)).normalized().distance_to(dir) * data.radius
 		h += (1.0 - smoothstep(7.0, 64.0, ridge_distance)) * 26.0
-		h = lerpf(shelf, h, smoothstep(29.0, 98.0, site_distance))
+		h = lerpf(shelf, h, smoothstep(45.0, 140.0, site_distance))
 	return data.radius + h
 
 
@@ -175,116 +193,153 @@ func get_sky_colors() -> Dictionary:
 	}
 
 
-func _build_terrain() -> void:
-	# Keep identical subdivisions on all faces so cube-sphere seams stay watertight.
-	var res: int = 49 if is_aurelia() else 34
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-
-	var faces: Array[Vector3] = [
-		Vector3.UP, Vector3.DOWN,
-		Vector3.LEFT, Vector3.RIGHT,
-		Vector3.FORWARD, Vector3.BACK
-	]
-
-	for face_normal in faces:
-		var axis_a := Vector3(face_normal.y, face_normal.z, face_normal.x)
-		var axis_b: Vector3 = face_normal.cross(axis_a)
-
-		var verts: PackedVector3Array = PackedVector3Array()
-		var cols: PackedColorArray = PackedColorArray()
-		verts.resize(res * res)
-		cols.resize(res * res)
-
-		for y in range(res):
-			var ty: float = (float(y) / float(res - 1) - 0.5) * 2.0
-			for x in range(res):
-				var tx: float = (float(x) / float(res - 1) - 0.5) * 2.0
-				var cube_pt: Vector3 = face_normal + axis_a * tx + axis_b * ty
-				var sphere_dir: Vector3 = _cube_to_sphere(cube_pt)
-				var r: float = get_surface_radius_at_dir(sphere_dir)
-				var idx: int = y * res + x
-				verts[idx] = sphere_dir * r
-				cols[idx] = _evaluate_biome_color(r - data.radius)
-
-		# Godot 4 uses Clockwise front-face winding when viewed from outside:
-		# (v2 - v0) x (v1 - v0) points along +face_normal (outward).
-		for y in range(res - 1):
-			for x in range(res - 1):
-				var i0: int = y * res + x
-				var i1: int = i0 + 1
-				var i2: int = (y + 1) * res + x
-				var i3: int = i2 + 1
-
-				st.set_color(cols[i0])
-				st.add_vertex(verts[i0])
-				st.set_color(cols[i2])
-				st.add_vertex(verts[i2])
-				st.set_color(cols[i1])
-				st.add_vertex(verts[i1])
-
-				st.set_color(cols[i1])
-				st.add_vertex(verts[i1])
-				st.set_color(cols[i2])
-				st.add_vertex(verts[i2])
-				st.set_color(cols[i3])
-				st.add_vertex(verts[i3])
-
-	st.index()
-	st.generate_normals()
-	var array_mesh: ArrayMesh = st.commit()
-
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.88
-	mat.metallic = 0.04
-	if is_aurelia():
-		var terrain_material := ShaderMaterial.new()
-		terrain_material.shader = AURELIA_TERRAIN
-		var grain := NoiseTexture2D.new()
-		grain.width = 128
-		grain.height = 128
-		grain.seamless = true
-		var texture_noise := FastNoiseLite.new()
-		texture_noise.seed = data.seed_value
-		texture_noise.frequency = 0.065
-		grain.noise = texture_noise
-		terrain_material.set_shader_parameter("surface_grain", grain)
-		array_mesh.surface_set_material(0, terrain_material)
-	else:
-		array_mesh.surface_set_material(0, mat)
-
-	_terrain_mesh_inst = MeshInstance3D.new()
+func _build_terrain(staggered := false) -> void:
+	_terrain_building = true
+	var resolution := 53 if is_aurelia() else 45
+	var mesh: ArrayMesh = await _make_surface_mesh(resolution, false, staggered)
+	var material := ShaderMaterial.new()
+	material.shader = AURELIA_TERRAIN
+	var grain := NoiseTexture2D.new()
+	grain.width = 128
+	grain.height = 128
+	grain.seamless = true
+	var texture_noise := FastNoiseLite.new()
+	texture_noise.seed = data.seed_value
+	texture_noise.frequency = 0.065
+	grain.noise = texture_noise
+	material.set_shader_parameter("surface_grain", grain)
+	_terrain_mesh_inst = Node3D.new()
 	_terrain_mesh_inst.name = "TerrainMesh"
-	_terrain_mesh_inst.mesh = array_mesh
-	_terrain_mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_terrain_mesh_inst)
+	_build_terrain_chunks(mesh.surface_get_arrays(0), resolution, material)
 
 	_terrain_collider = CollisionShape3D.new()
 	_terrain_collider.name = "TerrainCollider"
-	_terrain_collider.shape = array_mesh.create_trimesh_shape()
+	_terrain_collider.shape = mesh.create_trimesh_shape()
 	add_child(_terrain_collider)
+	_terrain_building = false
+
+
+func _build_terrain_chunks(source: Array, resolution: int, material: Material) -> void:
+	var vertices: PackedVector3Array = source[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = source[Mesh.ARRAY_NORMAL]
+	var colors: PackedColorArray = source[Mesh.ARRAY_COLOR]
+	var half_face := (resolution - 1) >> 1
+	var stride := half_face + 1
+	var grid := PackedInt32Array()
+	for y in range(half_face):
+		for x in range(half_face):
+			var index := y * stride + x
+			grid.append(index)
+			grid.append(index + stride)
+			grid.append(index + 1)
+			grid.append(index + 1)
+			grid.append(index + stride)
+			grid.append(index + stride + 1)
+	for face in range(6):
+		for row in range(2):
+			for col in range(2):
+				var start := face * resolution * resolution + row * half_face * resolution + col * half_face
+				var center := vertices[start + (half_face >> 1) * (resolution + 1)].normalized()
+				var extent := 0.0
+				var points := PackedVector3Array()
+				var gradients := PackedVector3Array()
+				var tints := PackedColorArray()
+				for y in range(stride):
+					var first := start + y * resolution
+					points.append_array(vertices.slice(first, first + stride))
+					gradients.append_array(normals.slice(first, first + stride))
+					tints.append_array(colors.slice(first, first + stride))
+				for corner: int in [0, half_face, half_face * stride, points.size() - 1]:
+					extent = maxf(extent, center.angle_to(points[corner].normalized()))
+				var arrays := []
+				arrays.resize(Mesh.ARRAY_MAX)
+				arrays[Mesh.ARRAY_VERTEX] = points
+				arrays[Mesh.ARRAY_NORMAL] = gradients
+				arrays[Mesh.ARRAY_COLOR] = tints
+				arrays[Mesh.ARRAY_INDEX] = grid
+				var mesh := ArrayMesh.new()
+				mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+				mesh.surface_set_material(0, material)
+				var tile := MeshInstance3D.new()
+				tile.mesh = mesh
+				tile.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				_terrain_mesh_inst.add_child(tile)
+				_terrain_chunks.append(tile)
+				_chunk_directions.append(center)
+				_chunk_extents.append(extent)
+
+
+func _update_terrain_visibility(direction: Vector3, altitude: float) -> void:
+	var horizon := acos(data.radius / (data.radius + maxf(altitude, 0.0)))
+	# Include the tallest ridges behind the nominal horizon.
+	var ridge_margin := acos(data.radius / (data.radius + data.terrain_amplitude)) + 0.045
+	for index in range(_terrain_chunks.size()):
+		var angle := horizon + ridge_margin + _chunk_extents[index]
+		_terrain_chunks[index].visible = direction.dot(_chunk_directions[index]) >= cos(angle)
+
+
+func _make_surface_mesh(resolution: int, orbital := false, staggered := false) -> ArrayMesh:
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	var face_size := resolution * resolution
+	vertices.resize(face_size * 6)
+	normals.resize(vertices.size())
+	colors.resize(vertices.size())
+	var faces: Array[Vector3] = [Vector3.UP, Vector3.DOWN, Vector3.LEFT, Vector3.RIGHT, Vector3.FORWARD, Vector3.BACK]
+	for face_index in range(faces.size()):
+		if staggered:
+			await get_tree().process_frame
+		var normal := faces[face_index]
+		var horizontal := Vector3(normal.y, normal.z, normal.x)
+		var vertical := normal.cross(horizontal)
+		var base := face_index * face_size
+		for y in range(resolution):
+			for x in range(resolution):
+				var cube := normal + horizontal * (2.0 * x / (resolution - 1) - 1.0) + vertical * (2.0 * y / (resolution - 1) - 1.0)
+				var direction := _cube_to_sphere(cube)
+				var radius := get_surface_radius_at_dir(direction)
+				var index := base + y * resolution + x
+				var display_radius := maxf(radius, data.radius + data.ocean_level_offset) if orbital and data.has_ocean else radius
+				vertices[index] = direction * display_radius
+				colors[index] = _evaluate_biome_color(direction, radius - data.radius, orbital)
+		for y in range(resolution):
+			for x in range(resolution):
+				var index := base + y * resolution + x
+				var tangent := vertices[base + y * resolution + mini(x + 1, resolution - 1)] - vertices[base + y * resolution + maxi(x - 1, 0)]
+				var bitangent := vertices[base + mini(y + 1, resolution - 1) * resolution + x] - vertices[base + maxi(y - 1, 0) * resolution + x]
+				normals[index] = tangent.cross(bitangent).normalized().lerp(vertices[index].normalized(), 0.22).normalized()
+				if x < resolution - 1 and y < resolution - 1:
+					indices.append(index)
+					indices.append(index + resolution)
+					indices.append(index + 1)
+					indices.append(index + 1)
+					indices.append(index + resolution)
+					indices.append(index + resolution + 1)
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 
 func _build_distant_proxy() -> void:
-	# Ultra-lightweight LOD sphere (~384 tris) used when viewing planet from deep space
-	var sphere := SphereMesh.new()
-	sphere.radius = data.radius
-	sphere.height = data.radius * 2.0
-	sphere.radial_segments = 16
-	sphere.rings = 10
-
+	var mesh: ArrayMesh = await _make_surface_mesh(13, true)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = data.lowland_color.lerp(data.ocean_color, 0.35 if data.has_ocean else 0.0)
-	mat.roughness = 0.82
+	mat.vertex_color_use_as_albedo = true
+	mat.roughness = 0.92
 	mat.disable_fog = true
-	sphere.material = mat
-
+	mesh.surface_set_material(0, mat)
 	_distant_proxy_inst = MeshInstance3D.new()
 	_distant_proxy_inst.name = "DistantProxyMesh"
-	_distant_proxy_inst.mesh = sphere
+	_distant_proxy_inst.mesh = mesh
 	_distant_proxy_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_distant_proxy_inst.visible = false
 	add_child(_distant_proxy_inst)
 
 
@@ -298,24 +353,28 @@ func _cube_to_sphere(p: Vector3) -> Vector3:
 	return Vector3(sx, sy, sz).normalized()
 
 
-func _evaluate_biome_color(height_offset: float) -> Color:
-	var h_norm: float = clampf(height_offset / maxf(data.terrain_amplitude, 1.0), -1.0, 1.0)
-	if data.has_ocean and height_offset < data.ocean_level_offset + 2.2:
-		return data.shore_color
-	if h_norm < 0.25:
-		return data.lowland_color.lerp(data.highland_color, clampf((h_norm + 0.2) / 0.45, 0.0, 1.0))
-	elif h_norm < 0.62:
-		return data.highland_color
-	else:
-		return data.highland_color.lerp(data.peak_color, clampf((h_norm - 0.62) / 0.35, 0.0, 1.0))
+func get_biome(direction: Vector3, height: float) -> int:
+	if height > data.terrain_amplitude * 0.23:
+		return 2
+	return 1 if _moisture.get_noise_3dv(direction * data.radius) > -0.12 else 0
+
+
+func _evaluate_biome_color(direction: Vector3, height: float, orbital: bool) -> Color:
+	if data.has_ocean and height < data.ocean_level_offset + 2.4:
+		return data.ocean_color if orbital and height < data.ocean_level_offset else data.shore_color
+	var moisture := _moisture.get_noise_3dv(direction * data.radius)
+	var woodland := data.lowland_color.lerp(data.tree_canopy_color.darkened(0.17), 0.62)
+	var lowlands := data.lowland_color.lerp(woodland, smoothstep(-0.30, 0.35, moisture))
+	var hills := lowlands.lerp(data.highland_color, smoothstep(0.13, 0.39, height / data.terrain_amplitude))
+	return hills.lerp(data.peak_color, smoothstep(0.29, 0.67, height / data.terrain_amplitude))
 
 
 func _build_ocean() -> void:
 	var sphere := SphereMesh.new()
 	sphere.radius = data.radius + data.ocean_level_offset
 	sphere.height = sphere.radius * 2.0
-	sphere.radial_segments = 24
-	sphere.rings = 14
+	sphere.radial_segments = 72
+	sphere.rings = 36
 
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = data.ocean_color
@@ -364,168 +423,37 @@ void fragment() {
 	add_child(_atmosphere_mesh_inst)
 
 
-func _build_scatter_multimeshes() -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = data.seed_value + 303
-
-	# 1. Alien Trees / Exotic Flora (1 draw call via MultiMesh)
-	var tree_count: int = int(260 * QualityManager.scatter_density_multiplier)
-	var tree_mesh := _create_stylized_tree_mesh()
-	var tree_mm := MultiMesh.new()
-	tree_mm.transform_format = MultiMesh.TRANSFORM_3D
-	tree_mm.use_colors = true
-	tree_mm.mesh = tree_mesh
-	tree_mm.instance_count = tree_count
-
-	var placed_trees: int = 0
-	for _i in range(tree_count * 2):
-		if placed_trees >= tree_count:
-			break
-		var dir := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1)).normalized()
-		var r: float = get_surface_radius_at_dir(dir)
-		var h_off: float = r - data.radius
-		if data.has_ocean and h_off <= data.ocean_level_offset + 1.5:
-			continue
-		if h_off > data.terrain_amplitude * 0.55:
-			continue
-		var up: Vector3 = dir
-		var ref: Vector3 = Vector3.RIGHT if absf(up.y) > 0.9 else Vector3.UP
-		var right: Vector3 = ref.cross(up).normalized()
-		var fwd: Vector3 = up.cross(right).normalized()
-		var b := Basis(right, up, -fwd).rotated(up, rng.randf_range(0.0, TAU))
-		var sc: float = rng.randf_range(0.75, 1.55)
-		b = b.scaled(Vector3.ONE * sc)
-		tree_mm.set_instance_transform(placed_trees, Transform3D(b, dir * (r - 0.25)))
-		tree_mm.set_instance_color(placed_trees, data.tree_canopy_color.lerp(data.crystal_color, rng.randf_range(0.0, 0.35)))
-		placed_trees += 1
-	tree_mm.visible_instance_count = placed_trees
-
-	_flora_multimesh = MultiMeshInstance3D.new()
-	_flora_multimesh.name = "FloraMultiMesh"
-	_flora_multimesh.multimesh = tree_mm
-	_flora_multimesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_flora_multimesh.visibility_range_end = 190.0 * QualityManager.detail_distance_multiplier
-	_flora_multimesh.visibility_range_end_margin = 25.0
-	add_child(_flora_multimesh)
-
-	# 2. Rocks & Crystalline Outcrops (1 draw call via MultiMesh)
-	var rock_count: int = int(220 * QualityManager.scatter_density_multiplier)
-	var rock_mesh := SphereMesh.new()
-	rock_mesh.radius = 1.6
-	rock_mesh.height = 2.4
-	rock_mesh.radial_segments = 6
-	rock_mesh.rings = 4
-	var rock_mat := StandardMaterial3D.new()
-	rock_mat.vertex_color_use_as_albedo = true
-	rock_mat.roughness = 0.85
-	rock_mesh.material = rock_mat
-
-	var rock_mm := MultiMesh.new()
-	rock_mm.transform_format = MultiMesh.TRANSFORM_3D
-	rock_mm.use_colors = true
-	rock_mm.mesh = rock_mesh
-	rock_mm.instance_count = rock_count
-
-	for i in range(rock_count):
-		var dir := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1)).normalized()
-		var r: float = get_surface_radius_at_dir(dir)
-		var up: Vector3 = dir
-		var ref: Vector3 = Vector3.RIGHT if absf(up.y) > 0.9 else Vector3.UP
-		var right: Vector3 = ref.cross(up).normalized()
-		var fwd: Vector3 = up.cross(right).normalized()
-		var b := Basis(right, up, -fwd).rotated(up, rng.randf_range(0.0, TAU))
-		b = b.scaled(Vector3(rng.randf_range(0.7, 2.2), rng.randf_range(0.6, 1.8), rng.randf_range(0.7, 2.2)))
-		rock_mm.set_instance_transform(i, Transform3D(b, dir * (r - 0.3)))
-		var is_crystal: bool = (i % 5 == 0)
-		rock_mm.set_instance_color(i, data.crystal_color if is_crystal else data.highland_color.darkened(0.15))
-
-	_rock_multimesh = MultiMeshInstance3D.new()
-	_rock_multimesh.name = "RockMultiMesh"
-	_rock_multimesh.multimesh = rock_mm
-	_rock_multimesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_rock_multimesh.visibility_range_end = 180.0 * QualityManager.detail_distance_multiplier
-	_rock_multimesh.visibility_range_end_margin = 20.0
-	add_child(_rock_multimesh)
-
-
-func _create_stylized_tree_mesh() -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-
-	var trunk_h: float = 3.2
-	var canopy_r: float = 2.4
-	var canopy_top: float = 6.8
-	var sides: int = 5
-
-	for i in range(sides):
-		var a0: float = float(i) / float(sides) * TAU
-		var a1: float = float(i + 1) / float(sides) * TAU
-		var p0 := Vector3(cos(a0) * 0.35, 0.0, sin(a0) * 0.35)
-		var p1 := Vector3(cos(a1) * 0.35, 0.0, sin(a1) * 0.35)
-		var p2 := Vector3(cos(a0) * 0.22, trunk_h, sin(a0) * 0.22)
-		var p3 := Vector3(cos(a1) * 0.22, trunk_h, sin(a1) * 0.22)
-
-		st.set_color(Color(0.32, 0.24, 0.20))
-		st.add_vertex(p0)
-		st.add_vertex(p1)
-		st.add_vertex(p2)
-
-		st.add_vertex(p1)
-		st.add_vertex(p3)
-		st.add_vertex(p2)
-
-		var c0 := Vector3(cos(a0) * canopy_r, trunk_h - 0.3, sin(a0) * canopy_r)
-		var c1 := Vector3(cos(a1) * canopy_r, trunk_h - 0.3, sin(a1) * canopy_r)
-		var apex := Vector3(0.0, canopy_top, 0.0)
-
-		st.set_color(Color.WHITE)
-		st.add_vertex(c0)
-		st.add_vertex(c1)
-		st.add_vertex(apex)
-
-	st.generate_normals()
-	var m := st.commit()
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.72
-	m.surface_set_material(0, mat)
-	return m
-
-
-func _activate_ecosystem() -> void:
+func _activate_ecosystem(direction: Vector3) -> void:
 	_ecosystem_active = true
-	if is_instance_valid(_landing):
-		for offset: Vector2 in [Vector2(13, 25), Vector2(-12, 31)]:
-			var point: Vector3 = _landing.surface_at_offset(offset)
-			_spawn_creature(point.normalized(), 0.6, Color("#df9d6e"), 1.1)
+	_ecosystem_direction = direction
 	var rng := RandomNumberGenerator.new()
-	rng.seed = data.seed_value + 999
-
-	for i in range(data.ruin_count):
-		var dir := _pick_land_direction(rng)
-		var r: float = get_surface_radius_at_dir(dir)
-		var monolith := MONOLITH_SCENE.instantiate()
-		_ecosystem_root.add_child(monolith)
-		monolith.position = dir * r
-		_align_node_to_up(monolith, dir)
-		if monolith.has_method("setup"):
-			monolith.setup(planet_name, "monolith_%d" % i, "Monólito Ancestral #%d" % (i + 1), data.crystal_color)
-
-	var creature_limit: int = int(data.wildlife_count * QualityManager.scatter_density_multiplier) + 3
-	for i in range(creature_limit):
-		var dir := _pick_land_direction(rng)
-		_spawn_creature(dir, 1.0, data.crystal_color, rng.randf_range(0.85, 1.45))
-
-	if data.has_hostiles:
-		for i in range(4):
-			var dir := _pick_land_direction(rng)
-			var r: float = get_surface_radius_at_dir(dir)
-			var sentinel := SENTINEL_SCENE.instantiate()
+	var grid := Vector3i((direction * data.radius / 180.0).round())
+	rng.seed = data.seed_value + hash(grid)
+	var right := direction.cross(Vector3.UP).normalized()
+	if right.length_squared() < 0.1:
+		right = direction.cross(Vector3.RIGHT).normalized()
+	var forward := direction.cross(right)
+	for i in range(10):
+		var angle := float(i) * TAU / 10.0 + rng.randf_range(-0.3, 0.3)
+		var offset := (right * cos(angle) + forward * sin(angle)) * rng.randf_range(30.0, 96.0)
+		var dir := (direction * data.radius + offset).normalized()
+		var point := get_surface_radius_at_dir(dir)
+		if data.has_ocean and point <= data.radius + data.ocean_level_offset + 2.0:
+			continue
+		if i == 0 or i == 5:
+			var relay := MONOLITH_SCENE.instantiate() as StaticBody3D
+			_ecosystem_root.add_child(relay)
+			relay.position = dir * (point - 0.7)
+			_align_node_to_up(relay, dir)
+			relay.setup(planet_name, "%s_relay_%d" % [str(grid), i], "Relé de %s" % data.biome_names[get_biome(dir, point - data.radius)], data.crystal_color)
+		elif i == 6 and data.has_hostiles:
+			var sentinel := SENTINEL_SCENE.instantiate() as Node3D
 			_ecosystem_root.add_child(sentinel)
-			sentinel.position = dir * (r + 4.5)
+			sentinel.position = dir * (point + 4.5)
 			_align_node_to_up(sentinel, dir)
-			if sentinel.has_method("setup_planet"):
-				sentinel.setup_planet(self)
+			sentinel.setup_planet(self)
+		elif i % 2 == 0:
+			_spawn_creature(dir, 2.0, data.crystal_color, rng.randf_range(0.9, 1.28))
 
 
 func _spawn_creature(direction: Vector3, clearance: float, tint: Color, size: float) -> void:
@@ -540,17 +468,6 @@ func _deactivate_ecosystem() -> void:
 	_ecosystem_active = false
 	for child in _ecosystem_root.get_children():
 		child.queue_free()
-
-
-func _pick_land_direction(rng: RandomNumberGenerator) -> Vector3:
-	for _attempt in range(25):
-		var dir := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1)).normalized()
-		if not data.has_ocean:
-			return dir
-		var r: float = get_surface_radius_at_dir(dir)
-		if (r - data.radius) > data.ocean_level_offset + 2.0:
-			return dir
-	return Vector3.UP
 
 
 func _align_node_to_up(node: Node3D, up_dir: Vector3) -> void:

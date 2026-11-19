@@ -53,6 +53,48 @@ func _ready() -> void:
 		_armor(knee, Vector3(0, -0.23, 0), Vector3(0.21, 0.34, 0.22), _shell)
 		_armor(knee, Vector3(0, -0.43, -0.05), Vector3(0.25, 0.16, 0.37), _fabric)
 
+	_batch_armor(_chassis)
+	for index in range(2):
+		_batch_armor(_arms[index])
+		_batch_armor(_hips[index])
+		_batch_armor(_knees[index])
+
+
+func _batch_armor(parent: Node3D) -> void:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var pieces: Array[MeshInstance3D] = []
+	for child in parent.get_children():
+		var piece := child as MeshInstance3D
+		if piece == null or piece.mesh == null:
+			continue
+		var material := piece.mesh.material as StandardMaterial3D
+		if material == null or material.emission_enabled or material.metallic > 0.1:
+			continue
+		var arrays: Array = piece.mesh.get_mesh_arrays()
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		var normal_to_joint := piece.basis.inverse().transposed()
+		for index in indices:
+			surface.set_color(material.albedo_color)
+			surface.set_normal((normal_to_joint * normals[index]).normalized())
+			surface.add_vertex(piece.transform * vertices[index])
+		pieces.append(piece)
+	if pieces.size() < 2:
+		return
+	surface.index()
+	var suit_material := StandardMaterial3D.new()
+	suit_material.vertex_color_use_as_albedo = true
+	suit_material.roughness = 0.66
+	surface.set_material(suit_material)
+	var armor := MeshInstance3D.new()
+	armor.mesh = surface.commit()
+	parent.add_child(armor)
+	for piece in pieces:
+		parent.remove_child(piece)
+		piece.queue_free()
+
 
 func animate(delta: float, ground_speed: float, grounded: bool, rising: bool, thrust: bool, landed: bool) -> void:
 	if landed:

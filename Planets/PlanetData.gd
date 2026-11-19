@@ -14,6 +14,12 @@ var gravity_strength: float = 18.0
 var has_hostiles: bool = false
 var wildlife_count: int = 10
 var ruin_count: int = 4
+enum TreeShape { BROADLEAF, NEEDLE, UMBRELLA }
+
+var vegetation_density := 1.0
+var tree_shape := TreeShape.BROADLEAF
+var tree_height_multiplier := 1.0
+var biome_names := PackedStringArray(["Campos", "Mata verde", "Serra"])
 
 # Visual palette
 var sky_zenith: Color = Color(0.12, 0.42, 0.82)
@@ -56,7 +62,7 @@ static func create_presets() -> Array[PlanetData]:
 	p1.lowland_color = Color("#74916a")
 	p1.highland_color = Color("#4c635d")
 	p1.peak_color = Color(0.92, 0.95, 0.98)
-	p1.tree_canopy_color = Color("#5c8e74")
+	p1.tree_canopy_color = Color("#588c43")
 	p1.crystal_color = Color(0.22, 0.95, 0.82)
 	list.append(p1)
 
@@ -69,6 +75,8 @@ static func create_presets() -> Array[PlanetData]:
 	p2.terrain_amplitude = 42.0
 	p2.noise_frequency = 0.0095
 	p2.has_ocean = false
+	p2.vegetation_density = 0.55
+	p2.biome_names = PackedStringArray(["Campos vulcânicos", "Bosques de cinza", "Cristas basálticas"])
 	p2.gravity_strength = 19.5
 	p2.has_hostiles = true
 	p2.wildlife_count = 6
@@ -93,6 +101,9 @@ static func create_presets() -> Array[PlanetData]:
 	p3.terrain_amplitude = 38.0
 	p3.noise_frequency = 0.0082
 	p3.has_ocean = true
+	p3.vegetation_density = 0.62
+	p3.tree_shape = TreeShape.NEEDLE
+	p3.biome_names = PackedStringArray(["Tundra", "Bosque boreal", "Cordilheira gelada"])
 	p3.ocean_level_offset = -5.0
 	p3.gravity_strength = 16.5
 	p3.has_hostiles = true
@@ -106,7 +117,7 @@ static func create_presets() -> Array[PlanetData]:
 	p3.lowland_color = Color(0.82, 0.92, 0.97)
 	p3.highland_color = Color(0.45, 0.62, 0.78)
 	p3.peak_color = Color(0.98, 0.99, 1.0)
-	p3.tree_canopy_color = Color(0.32, 0.85, 0.95)
+	p3.tree_canopy_color = Color("#579094")
 	p3.crystal_color = Color(0.40, 0.95, 1.0)
 	list.append(p3)
 
@@ -119,20 +130,23 @@ static func create_presets() -> Array[PlanetData]:
 	p4.terrain_amplitude = 30.0
 	p4.noise_frequency = 0.0090
 	p4.has_ocean = true
+	p4.vegetation_density = 1.45
+	p4.tree_height_multiplier = 1.34
+	p4.biome_names = PackedStringArray(["Brejos", "Floresta esmeralda", "Serra de jade"])
 	p4.ocean_level_offset = -2.0
 	p4.gravity_strength = 17.5
 	p4.has_hostiles = true
 	p4.wildlife_count = 12
 	p4.ruin_count = 4
-	p4.sky_zenith = Color(0.24, 0.11, 0.46)
-	p4.sky_horizon = Color(0.74, 0.48, 0.88)
+	p4.sky_zenith = Color("#2f657b")
+	p4.sky_horizon = Color("#afd7ad")
 	p4.atmosphere_rim = Color(0.78, 0.42, 1.0)
-	p4.ocean_color = Color(0.28, 0.14, 0.52, 0.85)
+	p4.ocean_color = Color("#448e81")
 	p4.shore_color = Color(0.56, 0.44, 0.68)
-	p4.lowland_color = Color(0.32, 0.18, 0.48)
-	p4.highland_color = Color(0.22, 0.36, 0.34)
+	p4.lowland_color = Color("#608950")
+	p4.highland_color = Color("#536c50")
 	p4.peak_color = Color(0.84, 0.72, 0.96)
-	p4.tree_canopy_color = Color(0.88, 0.32, 0.82)
+	p4.tree_canopy_color = Color("#61a645")
 	p4.crystal_color = Color(0.92, 0.42, 1.0)
 	list.append(p4)
 
@@ -145,6 +159,9 @@ static func create_presets() -> Array[PlanetData]:
 	p5.terrain_amplitude = 28.0
 	p5.noise_frequency = 0.0072
 	p5.has_ocean = false
+	p5.vegetation_density = 0.42
+	p5.tree_shape = TreeShape.UMBRELLA
+	p5.biome_names = PackedStringArray(["Dunas", "Vales de acácias", "Mesetas"])
 	p5.gravity_strength = 15.0
 	p5.has_hostiles = false
 	p5.wildlife_count = 7
@@ -160,4 +177,11 @@ static func create_presets() -> Array[PlanetData]:
 	p5.crystal_color = Color(0.98, 0.82, 0.30)
 	list.append(p5)
 
+	for planet in list:
+		planet.radius *= 3.5
+		planet.terrain_amplitude *= 2.1
+		planet.noise_frequency *= 0.54
+		planet.atmosphere_height *= 1.65
+		planet.ocean_level_offset *= 2.0
+		planet.ocean_color.a = 1.0
 	return list

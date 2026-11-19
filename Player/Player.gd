@@ -43,6 +43,7 @@ func _physics_process(delta: float) -> void:
 	visible = true
 
 	_fire_cooldown = maxf(0.0, _fire_cooldown - delta)
+	var previous_energy := GameState.jetpack_energy
 
 	# 1. Determine local spherical gravity and surface up direction
 	var grav_vec := Vector3.ZERO
@@ -80,7 +81,7 @@ func _physics_process(delta: float) -> void:
 	if grounded and move_dir.is_zero_approx():
 		acceleration = 47.0
 	_planar_velocity = _planar_velocity.slide(local_up).move_toward(move_dir * target_speed, acceleration * delta)
-	var firing := _fire_requested or GameState.mobile_fire_pressed or Input.is_action_pressed("fire")
+	var firing := not GameState.settings_open and (_fire_requested or GameState.mobile_fire_pressed or Input.is_action_pressed("fire"))
 	var facing := cam_fwd if firing else _planar_velocity
 
 	# Rotate visual avatar smoothly toward movement direction
@@ -103,7 +104,6 @@ func _physics_process(delta: float) -> void:
 				GameState.audio_system.play_jump()
 		else:
 			GameState.jetpack_energy = minf(GameState.jetpack_max_energy, GameState.jetpack_energy + 28.0 * delta)
-			GameState.emit_current_stats()
 	else:
 		if has_gravity:
 			_vertical_speed -= grav_vec.length() * delta
@@ -116,7 +116,9 @@ func _physics_process(delta: float) -> void:
 			_vertical_speed += jetpack_thrust * delta
 			_vertical_speed = minf(_vertical_speed, 13.0)
 			GameState.jetpack_energy = maxf(0.0, GameState.jetpack_energy - 34.0 * delta)
-			GameState.emit_current_stats()
+
+	if not is_equal_approx(previous_energy, GameState.jetpack_energy):
+		GameState.emit_current_stats()
 
 	velocity = _planar_velocity + local_up * _vertical_speed
 	move_and_slide()
@@ -149,7 +151,7 @@ func _physics_process(delta: float) -> void:
 
 	# 5. Check proximity to Spaceship & Interactables
 	_update_proximities()
-	if Input.is_action_just_pressed("interact"):
+	if not GameState.settings_open and Input.is_action_just_pressed("interact"):
 		if is_instance_valid(GameState.current_interactable):
 			try_interact()
 		else:

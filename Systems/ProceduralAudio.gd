@@ -1,100 +1,124 @@
 extends Node
-## Zero-asset procedural audio feedback using Godot's AudioStreamGenerator.
-## Produces lightweight sci-fi laser pulses, thruster rumble, discovery chimes, and footsteps.
+## Small synthesized clips cached at startup. Runtime mixing stays in the audio engine.
 
-var _sfx_player: AudioStreamPlayer
-var _playback: AudioStreamGeneratorPlayback
-var _sample_rate: float = 22050.0
-
-var _tone_freq: float = 0.0
-var _tone_end_freq: float = 0.0
-var _tone_time: float = 0.0
-var _tone_duration: float = 0.0
-var _tone_volume: float = 0.0
-var _noise_mix: float = 0.0
-var _phase: float = 0.0
+const SAMPLE_RATE := 22050
 var jetpack_active := false
-var _jet_level := 0.0
-var _jet_phase := 0.0
+var ship_thrust_level := 0.0
+var _sfx_player: AudioStreamPlayer
+var _jet_player: AudioStreamPlayer
+var _jet_volume := 0.0
+var _laser: AudioStreamWAV
+var _jump: AudioStreamWAV
+var _step: AudioStreamWAV
+var _landing: AudioStreamWAV
+var _board: AudioStreamWAV
+var _discovery: AudioStreamWAV
+var _hit: AudioStreamWAV
 
 
 func _ready() -> void:
 	GameState.audio_system = self
 	_sfx_player = AudioStreamPlayer.new()
-	var gen := AudioStreamGenerator.new()
-	gen.mix_rate = _sample_rate
-	gen.buffer_length = 0.08
-	_sfx_player.stream = gen
 	_sfx_player.volume_db = -8.0
 	add_child(_sfx_player)
-	_sfx_player.play()
-	_playback = _sfx_player.get_stream_playback() as AudioStreamGeneratorPlayback
+	_jet_player = AudioStreamPlayer.new()
+	_jet_player.stream = _make_jet_loop()
+	_jet_player.volume_db = -60.0
+	add_child(_jet_player)
+	_laser = _tone(920.0, 210.0, 0.14, 0.45, 0.15)
+	_jump = _tone(180.0, 420.0, 0.18, 0.30, 0.55)
+	_step = _tone(120.0, 65.0, 0.06, 0.16, 0.70)
+	_landing = _tone(95.0, 38.0, 0.14, 0.30, 0.66)
+	_board = _tone(240.0, 560.0, 0.28, 0.38, 0.10)
+	_discovery = _tone(523.25, 783.99, 0.42, 0.42, 0.0)
+	_hit = _tone(150.0, 48.0, 0.16, 0.45, 0.65)
 
 
 func _exit_tree() -> void:
-	_playback = null
 	_sfx_player.stop()
+	_jet_player.stop()
 
 
-func _process(_delta: float) -> void:
-	if _playback == null:
+func _process(delta: float) -> void:
+	var target := 1.0 if jetpack_active else ship_thrust_level
+	if is_equal_approx(_jet_volume, target):
 		return
-	var frames_available: int = _playback.get_frames_available()
-	if frames_available <= 0:
+	_jet_volume = move_toward(_jet_volume, target, delta * 8.0)
+	if _jet_volume <= 0.0:
+		_jet_player.stop()
 		return
-
-	for i in range(frames_available):
-		var sample: float = 0.0
-		if _tone_time < _tone_duration and _tone_duration > 0.0:
-			var t: float = _tone_time / _tone_duration
-			var freq: float = lerpf(_tone_freq, _tone_end_freq, t)
-			var env: float = (1.0 - t) * _tone_volume
-			_phase = fmod(_phase + freq / _sample_rate, 1.0)
-			var wave: float = sin(_phase * TAU)
-			if _noise_mix > 0.0:
-				var n: float = randf_range(-1.0, 1.0)
-				wave = lerpf(wave, n, _noise_mix)
-			sample = wave * env
-			_tone_time += 1.0 / _sample_rate
-		_jet_level = move_toward(_jet_level, 1.0 if jetpack_active else 0.0, 0.0018)
-		if _jet_level > 0.001:
-			_jet_phase = fmod(_jet_phase + 92.0 / _sample_rate, 1.0)
-			sample += (sin(_jet_phase * TAU) * 0.08 + randf_range(-0.16, 0.16)) * _jet_level
-		_playback.push_frame(Vector2(sample, sample))
+	if not _jet_player.playing:
+		_jet_player.play()
+	_jet_player.volume_db = linear_to_db(_jet_volume) - 7.0
 
 
 func play_laser() -> void:
-	_trigger_tone(920.0, 210.0, 0.14, 0.45, 0.15)
+	_play(_laser)
 
 
 func play_jump() -> void:
-	_trigger_tone(180.0, 420.0, 0.18, 0.30, 0.55)
+	_play(_jump)
 
 
 func play_step() -> void:
-	_trigger_tone(120.0, 65.0, 0.06, 0.16, 0.70)
+	_play(_step)
 
 
 func play_landing() -> void:
-	_trigger_tone(95.0, 38.0, 0.14, 0.30, 0.66)
+	_play(_landing)
 
 
 func play_board_ship() -> void:
-	_trigger_tone(240.0, 560.0, 0.28, 0.38, 0.10)
+	_play(_board)
 
 
 func play_discovery() -> void:
-	_trigger_tone(523.25, 783.99, 0.42, 0.42, 0.0)
+	_play(_discovery)
 
 
 func play_hit() -> void:
-	_trigger_tone(150.0, 48.0, 0.16, 0.45, 0.65)
+	_play(_hit)
 
 
-func _trigger_tone(f0: float, f1: float, dur: float, vol: float, noise: float) -> void:
-	_tone_freq = f0
-	_tone_end_freq = f1
-	_tone_duration = dur
-	_tone_time = 0.0
-	_tone_volume = vol
-	_noise_mix = noise
+func _play(clip: AudioStreamWAV) -> void:
+	_sfx_player.stream = clip
+	_sfx_player.play()
+
+
+func _audio(data: PackedByteArray) -> AudioStreamWAV:
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = SAMPLE_RATE
+	stream.data = data
+	return stream
+
+
+func _tone(start_frequency: float, end_frequency: float, duration: float, amplitude: float, noise: float) -> AudioStreamWAV:
+	var frames := roundi(SAMPLE_RATE * duration)
+	var data := PackedByteArray()
+	data.resize(frames * 2)
+	var phase := 0.0
+	var rng := RandomNumberGenerator.new()
+	rng.seed = frames
+	for frame in range(frames):
+		var progress := float(frame) / frames
+		phase += lerpf(start_frequency, end_frequency, progress) * TAU / SAMPLE_RATE
+		var wave := lerpf(sin(phase), rng.randf_range(-1.0, 1.0), noise)
+		var envelope := minf(frame / 36.0, 1.0) * (1.0 - progress) * amplitude
+		data.encode_s16(frame * 2, roundi(wave * envelope * 32767.0))
+	return _audio(data)
+
+
+func _make_jet_loop() -> AudioStreamWAV:
+	var frames := SAMPLE_RATE >> 2
+	var data := PackedByteArray()
+	data.resize(frames * 2)
+	for frame in range(frames):
+		var phase := float(frame) * TAU / frames
+		var rumble := sin(phase * 23.0) * 0.065 + sin(phase * 47.0) * 0.045 + sin(phase * 83.0) * 0.032
+		var flutter := 0.78 + sin(phase * 3.0) * 0.22
+		data.encode_s16(frame * 2, roundi(rumble * flutter * 32767.0))
+	var stream := _audio(data)
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_end = frames
+	return stream
