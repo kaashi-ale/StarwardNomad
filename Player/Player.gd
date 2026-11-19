@@ -13,6 +13,7 @@ const PROJECTILE_SCENE := preload("res://Combat/Projectile.tscn")
 var _vertical_speed: float = 0.0
 var _step_timer: float = 0.0
 var _fire_cooldown: float = 0.0
+var _jump_requested: bool = false
 var _visual_mesh: Node3D
 var _muzzle: Marker3D
 var _camera_rig: Node3D
@@ -27,6 +28,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	if GameState.current_mode != GameState.ControlMode.ON_FOOT:
+		_jump_requested = false
 		visible = false
 		return
 	visible = true
@@ -73,14 +75,14 @@ func _physics_process(delta: float) -> void:
 
 	# 3. Jump & Jetpack vertical physics (supports both planetary gravity and zero-G EVA)
 	var jump_held: bool = GameState.mobile_jump_pressed or Input.is_action_pressed("jump")
-	var jump_just: bool = Input.is_action_just_pressed("jump")
+	var jump_just: bool = Input.is_action_just_pressed("jump") or _jump_requested
+	_jump_requested = false
 
 	if has_gravity and is_on_floor():
 		if _vertical_speed < 0.0:
 			_vertical_speed = -1.5
-		if jump_just or GameState.mobile_jump_pressed:
+		if jump_just:
 			_vertical_speed = jump_velocity
-			GameState.mobile_jump_pressed = false
 			if is_instance_valid(GameState.audio_system):
 				GameState.audio_system.play_jump()
 		else:
@@ -119,10 +121,7 @@ func _physics_process(delta: float) -> void:
 
 
 func trigger_jump_or_jetpack() -> void:
-	if is_on_floor():
-		_vertical_speed = jump_velocity
-		if is_instance_valid(GameState.audio_system):
-			GameState.audio_system.play_jump()
+	_jump_requested = true
 
 
 func fire_blaster() -> void:
