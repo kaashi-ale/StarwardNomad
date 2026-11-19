@@ -3,6 +3,12 @@ extends CanvasLayer
 ## drag region (excluding action buttons), context-aware On-Foot & Starship controls,
 ## 3D Planet Waypoint markers, and live Graphics Quality settings for Moto G04s.
 
+const GRAPHICS_PRESETS := [
+	QualityManager.Preset.ECONOMY,
+	QualityManager.Preset.LOW,
+	QualityManager.Preset.MEDIUM,
+	QualityManager.Preset.HIGH,
+]
 const FPS_OPTIONS := [30, 45, 60]
 
 @onready var location_label: Label = $TopBar/HBox/LocationLabel
@@ -254,8 +260,9 @@ func _bind_ship_axis(positive: Button, negative: Button, update: Callable) -> vo
 
 func _setup_settings_ui() -> void:
 	var fps_row: HBoxContainer = $SettingsPanel/VBox/FpsOptions
-	_add_settings_choices($SettingsPanel/VBox/PresetOptions, ["Baixo", "Médio", "Alto", "Econômico"],
-		QualityManager.current_preset, QualityManager.select_preset)
+	_add_settings_choices($SettingsPanel/VBox/PresetOptions, ["Econômico", "Baixo", "Médio", "Alto"],
+		GRAPHICS_PRESETS.find(QualityManager.current_preset),
+		func(index: int): QualityManager.select_preset(GRAPHICS_PRESETS[index]))
 	_add_settings_choices(fps_row, ["30 FPS", "45 FPS", "60 FPS"],
 		FPS_OPTIONS.find(QualityManager.target_fps),
 		func(index: int): QualityManager.set_target_fps(FPS_OPTIONS[index]))
