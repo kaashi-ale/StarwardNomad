@@ -77,7 +77,7 @@ func _plant_tile(key: Vector3i, center: Vector3) -> MultiMeshInstance3D:
 	for sample in range(count):
 		var offset := right * rng.randf_range(-35.0, 35.0) + tangent * rng.randf_range(-35.0, 35.0)
 		var direction := (center * radius + offset).normalized()
-		if _planet.is_aurelia() and (direction.distance_to(Vector3(0.180171244, 0.960913302, 0.210199785)) * radius < 48.0 or _planet.is_village_area(direction)):
+		if _planet.is_aurelia() and (direction.distance_to(Vector3(0.180171244, 0.960913302, 0.210199785)) * radius < 48.0 or _planet.is_village_area(direction) or _planet.is_forest_area(direction)):
 			continue
 		var surface: float = _planet.get_surface_radius_at_dir(direction)
 		var biome: int = _planet.get_biome(direction, surface - radius)
@@ -144,6 +144,8 @@ func _plant_ground_cover(tile: Node3D, center: Vector3, right: Vector3, tangent:
 		if sin(x * 0.27) * cos(y * 0.23) < -0.28:
 			continue
 		var direction := (anchor + right * x + tangent * y).normalized()
+		if _planet.is_forest_area(direction):
+			continue
 		var altitude: float = _planet.get_surface_radius_at_dir(direction)
 		var world: Vector3 = _planet.global_position + direction * altitude
 		var ray := PhysicsRayQueryParameters3D.create(world + direction * 55.0, world - direction * 55.0, 1)

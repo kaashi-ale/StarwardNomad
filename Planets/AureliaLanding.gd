@@ -1,6 +1,7 @@
 extends Node3D
 ## Dunes, copper fans and the remains of a survey gate around the first landing site.
 
+const FOREST := preload("res://Planets/AureliaForest.gd")
 const VILLAGE := preload("res://Planets/AureliaVillage.gd")
 const VILLAGE_CENTER := Vector2(-29.0, 64.0)
 const MONOLITH := preload("res://Combat/AncientMonolith.tscn")
@@ -20,6 +21,27 @@ func build(planet: Node3D, up: Vector3) -> void:
 	_build_gate()
 	_build_stone_arch()
 	_build_village.call_deferred()
+	_build_forest.call_deferred()
+
+
+func is_forest_direction(direction: Vector3) -> bool:
+	var up := _origin.normalized()
+	var projection := direction.dot(up)
+	if projection < 0.95:
+		return false
+	var point := direction * (_origin.length() / projection)
+	return FOREST.contains_offset(Vector2(point.dot(_right), point.dot(_forward)))
+
+
+func _build_forest() -> void:
+	await get_tree().physics_frame
+	var forest := FOREST.new()
+	forest.name = "BosqueDoArco"
+	forest.collision_layer = 32
+	forest.collision_mask = 0
+	add_child(forest)
+	forest.position = surface_at_offset(FOREST.CENTER)
+	forest.build(self, _planet)
 
 
 func village_direction() -> Vector3:
@@ -60,6 +82,8 @@ func _build_grove() -> void:
 		var offset := Vector2(cos(angle), sin(angle)) * radius
 		if absf(offset.x + 2.0) < 6.0 and offset.y > 0.0 and offset.y < 45.0:
 			offset.x += 9.0
+		if FOREST.contains_offset(offset):
+			offset += Vector2(32.0, -32.0)
 		if offset.distance_to(VILLAGE_CENTER) < 29.0:
 			offset.x -= 49.0
 		var point := surface_at_offset(offset)
@@ -86,6 +110,8 @@ func _build_grove() -> void:
 		var angle := rng.randf_range(0.0, TAU)
 		var radius := rng.randf_range(15.0, 103.0)
 		var offset := Vector2(cos(angle), sin(angle)) * radius
+		if FOREST.contains_offset(offset):
+			offset += Vector2(30.0, -29.0)
 		if offset.distance_to(VILLAGE_CENTER) < 25.0:
 			offset.x -= 44.0
 		var point := surface_at_offset(offset)

@@ -2,6 +2,12 @@
 
 Jogo 3D single-player de exploração espacial e planetária desenvolvido em **Godot Engine 4.3+ (GDScript)** com foco em desempenho estável no **Motorola Moto G04s** (Android 14, Unisoc T606, Mali-G57 MP1, 4 GB RAM).
 
+## Bosque do Arco
+
+Ao iniciar em Aurelia Prime, caminhe até o pórtico e contorne-o pela direita. Siga a trilha de terra até o arco natural. Entre as árvores de copas diferentes, a trilha passa por samambaias e flores silvestres. À esquerda da trilha há uma clareira com um tronco caído. O bosque tem aproximadamente 55 metros de extensão.
+
+As árvores, os grandes rochedos e os troncos caídos têm colisão. No perfil **Econômico**, as copas usam malhas mais leves e a densidade de vegetação pequena é menor. A trilha, os obstáculos e o caminho até o arco são os mesmos nos demais perfis.
+
 ## Vale do Trevo e chamada da nave
 
 Em Aurelia Prime, siga à esquerda do pórtico para encontrar as casas de madeira, o poço e o curral do Vale do Trevo. Pressione **E** perto de Lina, Tomé ou Iara para conversar. No celular, toque em **Conversar** quando o nome aparecer.

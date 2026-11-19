@@ -135,6 +135,10 @@ func set_sky_obscuration(weight: float) -> void:
 		_distant_proxy_inst.hide()
 
 
+func is_forest_area(direction: Vector3) -> bool:
+	return is_instance_valid(_landing) and _landing.is_forest_direction(direction)
+
+
 func is_village_area(direction: Vector3) -> bool:
 	return is_instance_valid(_landing) and direction.distance_to(_landing.village_direction()) * data.radius < 34.0
 
@@ -226,6 +230,12 @@ func _build_terrain(staggered := false) -> void:
 	grain.noise = texture_noise
 	material.set_shader_parameter("surface_grain", grain)
 	material.set_shader_parameter("meadow", 1.0 if is_aurelia() else (0.82 if planet_name == "Veridian Mire" else 0.0))
+	if is_aurelia():
+		var up := AURELIA_START_DIRECTION
+		var right := Vector3.RIGHT.cross(up).normalized()
+		material.set_shader_parameter("grove_enabled", true)
+		material.set_shader_parameter("grove_right", right)
+		material.set_shader_parameter("grove_forward", up.cross(right))
 	_terrain_mesh_inst = Node3D.new()
 	_terrain_mesh_inst.name = "TerrainMesh"
 	add_child(_terrain_mesh_inst)
