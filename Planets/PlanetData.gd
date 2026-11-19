@@ -48,15 +48,15 @@ static func create_presets() -> Array[PlanetData]:
 	p1.has_hostiles = false
 	p1.wildlife_count = 12
 	p1.ruin_count = 5
-	p1.sky_zenith = Color(0.11, 0.44, 0.84)
-	p1.sky_horizon = Color(0.54, 0.86, 0.94)
+	p1.sky_zenith = Color("#275577")
+	p1.sky_horizon = Color("#a4cdc6")
 	p1.atmosphere_rim = Color(0.30, 0.78, 1.0)
-	p1.ocean_color = Color(0.05, 0.48, 0.68, 0.84)
-	p1.shore_color = Color(0.86, 0.80, 0.58)
-	p1.lowland_color = Color(0.16, 0.56, 0.33)
-	p1.highland_color = Color(0.35, 0.40, 0.37)
+	p1.ocean_color = Color("#397d86")
+	p1.shore_color = Color("#b49f78")
+	p1.lowland_color = Color("#74916a")
+	p1.highland_color = Color("#4c635d")
 	p1.peak_color = Color(0.92, 0.95, 0.98)
-	p1.tree_canopy_color = Color(0.14, 0.78, 0.52)
+	p1.tree_canopy_color = Color("#5c8e74")
 	p1.crystal_color = Color(0.22, 0.95, 0.82)
 	list.append(p1)
 

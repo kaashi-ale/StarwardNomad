@@ -13,6 +13,9 @@ var _tone_duration: float = 0.0
 var _tone_volume: float = 0.0
 var _noise_mix: float = 0.0
 var _phase: float = 0.0
+var jetpack_active := false
+var _jet_level := 0.0
+var _jet_phase := 0.0
 
 
 func _ready() -> void:
@@ -26,6 +29,11 @@ func _ready() -> void:
 	add_child(_sfx_player)
 	_sfx_player.play()
 	_playback = _sfx_player.get_stream_playback() as AudioStreamGeneratorPlayback
+
+
+func _exit_tree() -> void:
+	_playback = null
+	_sfx_player.stop()
 
 
 func _process(_delta: float) -> void:
@@ -48,6 +56,10 @@ func _process(_delta: float) -> void:
 				wave = lerpf(wave, n, _noise_mix)
 			sample = wave * env
 			_tone_time += 1.0 / _sample_rate
+		_jet_level = move_toward(_jet_level, 1.0 if jetpack_active else 0.0, 0.0018)
+		if _jet_level > 0.001:
+			_jet_phase = fmod(_jet_phase + 92.0 / _sample_rate, 1.0)
+			sample += (sin(_jet_phase * TAU) * 0.08 + randf_range(-0.16, 0.16)) * _jet_level
 		_playback.push_frame(Vector2(sample, sample))
 
 
@@ -61,6 +73,10 @@ func play_jump() -> void:
 
 func play_step() -> void:
 	_trigger_tone(120.0, 65.0, 0.06, 0.16, 0.70)
+
+
+func play_landing() -> void:
+	_trigger_tone(95.0, 38.0, 0.14, 0.30, 0.66)
 
 
 func play_board_ship() -> void:

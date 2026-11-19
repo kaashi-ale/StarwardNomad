@@ -17,7 +17,13 @@ func _ready() -> void:
 
 func setup_planet(planet: PlanetBody, tint: Color, scale_factor: float) -> void:
 	_planet = planet
-	scale = Vector3.ONE * scale_factor
+	var collider: CollisionShape3D = $CollisionShape3D
+	var capsule := collider.shape.duplicate() as CapsuleShape3D
+	capsule.height *= scale_factor
+	capsule.radius *= scale_factor
+	collider.shape = capsule
+	collider.position.y *= scale_factor
+	_body_mesh.scale = Vector3.ONE * scale_factor
 	if is_instance_valid(_body_mesh):
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = tint.lerp(Color(0.95, 0.92, 0.82), 0.45)
@@ -55,9 +61,10 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 	if _wander_dir.length_squared() > 0.01:
-		var right: Vector3 = _wander_dir.cross(up_dir).normalized()
-		var fwd: Vector3 = up_dir.cross(right).normalized()
-		global_transform.basis = global_transform.basis.slerp(Basis(right, up_dir, fwd), clampf(delta * 6.0, 0.0, 1.0))
+		var tangent := _wander_dir.slide(up_dir)
+		if tangent.length_squared() > 0.01:
+			var orientation := Basis.looking_at(tangent, up_dir)
+			global_basis = global_basis.orthonormalized().slerp(orientation, clampf(delta * 6.0, 0.0, 1.0))
 
 	if is_instance_valid(_body_mesh) and _is_walking:
 		_bob_phase += delta * 9.0

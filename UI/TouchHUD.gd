@@ -46,6 +46,8 @@ func _ready() -> void:
 	GameState.stats_updated.connect(_on_stats_updated)
 	GameState.notification_requested.connect(_on_notification_requested)
 
+	if not OS.has_feature("mobile"):
+		board_ship_btn.text = "E  ·  EMBARCAR"
 	_setup_buttons()
 	_setup_settings_ui()
 	get_window().focus_exited.connect(_reset_touch_inputs)
@@ -195,7 +197,7 @@ func _setup_buttons() -> void:
 	fire_btn.button_down.connect(func():
 		GameState.mobile_fire_pressed = true
 		if is_instance_valid(GameState.player_node):
-			GameState.player_node.fire_blaster()
+			GameState.player_node.request_fire()
 	)
 	fire_btn.button_up.connect(func(): GameState.mobile_fire_pressed = false)
 
@@ -279,6 +281,10 @@ func _add_settings_choices(row: HBoxContainer, labels: Array, selected: int, on_
 
 
 func _update_planet_waypoints() -> void:
+	if GameState.current_mode == GameState.ControlMode.ON_FOOT:
+		for label in _waypoint_labels:
+			label.hide()
+		return
 	var cam := get_viewport().get_camera_3d()
 	if cam == null or not is_instance_valid(GameState.space_system):
 		return
@@ -317,6 +323,7 @@ func _update_planet_waypoints() -> void:
 func _on_mode_changed(new_mode: int) -> void:
 	var on_foot: bool = (new_mode == GameState.ControlMode.ON_FOOT)
 	_reset_touch_inputs()
+	$AimPoint.visible = on_foot
 	foot_controls.visible = on_foot
 	ship_controls.visible = not on_foot
 
@@ -338,7 +345,7 @@ func _on_ship_proximity_changed(can_board: bool) -> void:
 func _on_interaction_changed(can_interact: bool, prompt: String) -> void:
 	interact_btn.visible = can_interact
 	if can_interact:
-		interact_btn.text = prompt
+		interact_btn.text = prompt if OS.has_feature("mobile") else "E  ·  " + prompt
 
 
 func _on_stats_updated(hp: float, max_hp: float, energy: float, max_energy: float) -> void:

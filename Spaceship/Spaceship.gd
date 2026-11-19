@@ -12,14 +12,14 @@ extends CharacterBody3D
 var is_landed: bool = true
 var can_land_now: bool = false
 var _current_speed: float = 0.0
-var _thruster_glow: MeshInstance3D
+var _thruster_glow: Node3D
 var _landing_gear: Node3D
 var _chase_cam: Camera3D
 
 
 func _ready() -> void:
 	GameState.ship_node = self
-	_thruster_glow = get_node_or_null("ShipVisual/ThrusterGlow") as MeshInstance3D
+	_thruster_glow = get_node_or_null("ShipVisual/ThrusterGlow") as Node3D
 	_landing_gear = get_node_or_null("ShipVisual/LandingGear") as Node3D
 	_chase_cam = get_node_or_null("ChaseCameraPivot/Camera3D") as Camera3D
 	_update_landing_gear_visual()
@@ -33,6 +33,10 @@ func _physics_process(delta: float) -> void:
 
 	if is_instance_valid(_chase_cam) and not _chase_cam.current:
 		_chase_cam.make_current()
+
+	if Input.is_action_just_pressed("interact"):
+		call_deferred("exit_ship")
+		return
 
 	var altitude: float = 9999.0
 	var atmo_h: float = 300.0
@@ -106,7 +110,10 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(_thruster_glow):
 		_thruster_glow.visible = (_current_speed > 5.0 or throttle_in > 0.1)
 		var pulse: float = 0.85 + 0.3 * sin(Time.get_ticks_msec() * 0.02)
-		_thruster_glow.scale = Vector3(1.0, 1.0, clampf(_current_speed / 45.0, 0.5, 2.6) * pulse)
+		var length := clampf(_current_speed / 45.0, 0.5, 2.0) * pulse
+		for plume: MeshInstance3D in _thruster_glow.get_children():
+			plume.scale.y = length
+			plume.position.z = 2.23 + length * 0.75
 
 	move_and_slide()
 

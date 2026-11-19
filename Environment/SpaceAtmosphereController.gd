@@ -75,8 +75,18 @@ func _process(delta: float) -> void:
 		_sky_mat.ground_horizon_color = sky_horizon
 
 	var env := _world_env.environment
+	if atmo_weight > 0.005 and is_instance_valid(planet):
+		var radial_up := planet.global_position.direction_to(focus.global_position)
+		env.sky_rotation = Basis(Quaternion(Vector3.UP, radial_up)).get_euler()
+	var belt := GameState.space_system.get_node_or_null("AsteroidBelt") as MultiMeshInstance3D
+	if is_instance_valid(belt):
+		belt.visible = space_ratio > 0.63
 	env.ambient_light_color = Color(0.22, 0.26, 0.35).lerp(sky_horizon, atmo_weight * 0.75)
-	env.ambient_light_energy = lerpf(0.45, 0.95, atmo_weight)
+	env.ambient_light_energy = lerpf(0.42, 0.68, atmo_weight)
+	env.fog_enabled = atmo_weight > 0.005
+	env.fog_light_color = sky_horizon
+	env.fog_density = 0.0028 * atmo_weight
+	env.fog_sky_affect = 0.0
 
 	if is_instance_valid(_starfield) and _starfield.has_method("set_space_visibility"):
 		_starfield.set_space_visibility(space_ratio)

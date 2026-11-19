@@ -4,16 +4,19 @@ extends CharacterBody3D
 
 const PROJECTILE_SCENE := preload("res://Combat/Projectile.tscn")
 
-@export var walk_speed: float = 7.5
-@export var sprint_speed: float = 12.5
-@export var jump_velocity: float = 9.5
-@export var jetpack_thrust: float = 23.0
+@export var walk_speed: float = 5.4
+@export var sprint_speed: float = 8.6
+@export var jump_velocity: float = 7.2
+@export var jetpack_thrust: float = 32.0
 @export var ship_board_distance: float = 8.0
 
+var _planar_velocity := Vector3.ZERO
+var _air_time := 0.0
 var _vertical_speed: float = 0.0
 var _step_timer: float = 0.0
 var _fire_cooldown: float = 0.0
 var _jump_requested: bool = false
+var _fire_requested := false
 var _visual_mesh: Node3D
 var _muzzle: Marker3D
 var _camera_rig: Node3D
@@ -29,6 +32,12 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if GameState.current_mode != GameState.ControlMode.ON_FOOT:
 		_jump_requested = false
+		_fire_requested = false
+		_planar_velocity = Vector3.ZERO
+		_vertical_speed = 0.0
+		_air_time = 0.0
+		if is_instance_valid(GameState.audio_system):
+			GameState.audio_system.jetpack_active = false
 		visible = false
 		return
 	visible = true
@@ -66,19 +75,26 @@ func _physics_process(delta: float) -> void:
 
 	var sprinting: bool = GameState.mobile_sprint_active or Input.is_action_pressed("sprint")
 	var target_speed: float = sprint_speed if sprinting else walk_speed
-	var planar_vel: Vector3 = move_dir * target_speed
+	var grounded := has_gravity and is_on_floor()
+	var acceleration := 35.0 if grounded else 16.0
+	if grounded and move_dir.is_zero_approx():
+		acceleration = 47.0
+	_planar_velocity = _planar_velocity.slide(local_up).move_toward(move_dir * target_speed, acceleration * delta)
+	var firing := _fire_requested or GameState.mobile_fire_pressed or Input.is_action_pressed("fire")
+	var facing := cam_fwd if firing else _planar_velocity
 
 	# Rotate visual avatar smoothly toward movement direction
-	if move_dir.length_squared() > 0.05 and is_instance_valid(_visual_mesh):
-		var target_basis := Basis.looking_at(move_dir, local_up)
-		_visual_mesh.global_transform.basis = _visual_mesh.global_transform.basis.slerp(target_basis, clampf(delta * 12.0, 0.0, 1.0))
+	if facing.length_squared() > 0.05 and is_instance_valid(_visual_mesh):
+		var target_basis := Basis.looking_at(facing, local_up)
+		_visual_mesh.global_transform.basis = _visual_mesh.global_transform.basis.orthonormalized().slerp(target_basis, clampf(delta * 12.0, 0.0, 1.0))
 
 	# 3. Jump & Jetpack vertical physics (supports both planetary gravity and zero-G EVA)
 	var jump_held: bool = GameState.mobile_jump_pressed or Input.is_action_pressed("jump")
 	var jump_just: bool = Input.is_action_just_pressed("jump") or _jump_requested
 	_jump_requested = false
 
-	if has_gravity and is_on_floor():
+	var thrusting := false
+	if grounded:
 		if _vertical_speed < 0.0:
 			_vertical_speed = -1.5
 		if jump_just:
@@ -95,45 +111,82 @@ func _physics_process(delta: float) -> void:
 			# Gentle damping in zero-gravity space
 			_vertical_speed = lerpf(_vertical_speed, 0.0, clampf(delta * 1.2, 0.0, 1.0))
 			GameState.jetpack_energy = minf(GameState.jetpack_max_energy, GameState.jetpack_energy + 12.0 * delta)
-		if jump_held and GameState.jetpack_energy > 2.0:
+		if jump_held and _air_time > 0.24 and GameState.jetpack_energy > 2.0:
+			thrusting = true
 			_vertical_speed += jetpack_thrust * delta
 			_vertical_speed = minf(_vertical_speed, 13.0)
 			GameState.jetpack_energy = maxf(0.0, GameState.jetpack_energy - 34.0 * delta)
 			GameState.emit_current_stats()
 
-	velocity = planar_vel + local_up * _vertical_speed
+	velocity = _planar_velocity + local_up * _vertical_speed
 	move_and_slide()
+	var now_grounded := is_on_floor()
+	var landed := now_grounded and _air_time > 0.18
+	_air_time = 0.0 if now_grounded else _air_time + delta
+	if now_grounded and _vertical_speed < 0.0:
+		_vertical_speed = -1.5
+	elif is_on_ceiling() and _vertical_speed > 0.0:
+		_vertical_speed = 0.0
+	if is_instance_valid(GameState.audio_system):
+		GameState.audio_system.jetpack_active = thrusting
+		if landed:
+			GameState.audio_system.play_landing()
+	var measured_speed := get_real_velocity().slide(local_up).length()
+	_visual_mesh.animate(delta, measured_speed, now_grounded, _vertical_speed > 0.0, thrusting, landed)
 
 	# Footstep audio feedback
-	if has_gravity and is_on_floor() and move_dir.length() > 0.25:
-		_step_timer += delta * (1.45 if sprinting else 1.0)
+	if has_gravity and now_grounded and measured_speed > 1.1:
+		_step_timer += delta * measured_speed / walk_speed
 		if _step_timer >= 0.38:
 			_step_timer = 0.0
 			if is_instance_valid(GameState.audio_system):
 				GameState.audio_system.play_step()
 
 	# 4. Weapon firing
-	if (GameState.mobile_fire_pressed or Input.is_action_pressed("fire")) and _fire_cooldown <= 0.0:
+	if firing and _fire_cooldown <= 0.0:
 		fire_blaster()
+	_fire_requested = false
 
 	# 5. Check proximity to Spaceship & Interactables
 	_update_proximities()
+	if Input.is_action_just_pressed("interact"):
+		if is_instance_valid(GameState.current_interactable):
+			try_interact()
+		else:
+			try_board_ship()
 
 
 func trigger_jump_or_jetpack() -> void:
 	_jump_requested = true
 
 
+func request_fire() -> void:
+	_fire_requested = true
+
+
 func fire_blaster() -> void:
 	if _fire_cooldown > 0.0:
 		return
 	_fire_cooldown = 0.22
+	_visual_mesh.recoil()
 
 	var proj := PROJECTILE_SCENE.instantiate()
 	get_parent().add_child(proj)
 
 	var spawn_pos: Vector3 = _muzzle.global_position if is_instance_valid(_muzzle) else (global_position + global_transform.basis.y * 1.2)
 	var shoot_dir: Vector3 = -_visual_mesh.global_transform.basis.z.normalized() if is_instance_valid(_visual_mesh) else -global_transform.basis.z.normalized()
+	var cam := get_viewport().get_camera_3d()
+	if is_instance_valid(cam):
+		var aim := -cam.global_basis.z
+		var endpoint := cam.global_position + aim * 100.0
+		var ray := PhysicsRayQueryParameters3D.create(cam.global_position, endpoint, 45, [get_rid()])
+		var hit := get_world_3d().direct_space_state.intersect_ray(ray)
+		var aim_point: Vector3 = hit.get("position", endpoint)
+		# A wall between the camera and the astronaut must not turn bolts backwards.
+		if (aim_point - spawn_pos).dot(aim) > 0.0:
+			shoot_dir = spawn_pos.direction_to(aim_point)
+		else:
+			shoot_dir = aim
 	proj.global_position = spawn_pos
 	if proj.has_method("launch"):
 		proj.launch(shoot_dir, 65.0, 25.0, true)

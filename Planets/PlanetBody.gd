@@ -8,6 +8,11 @@ const CREATURE_SCENE := preload("res://Creatures/AlienCreature.tscn")
 const SENTINEL_SCENE := preload("res://Creatures/HostileSentinel.tscn")
 const MONOLITH_SCENE := preload("res://Combat/AncientMonolith.tscn")
 
+const AURELIA_START_DIRECTION := Vector3(0.180171244, 0.960913302, 0.210199785)
+const AURELIA_LANDING := preload("res://Planets/AureliaLanding.gd")
+const AURELIA_TERRAIN := preload("res://Planets/AureliaTerrain.gdshader")
+
+var _landing: Node3D
 var data: PlanetData
 var planet_name: String = "Planet"
 
@@ -52,6 +57,12 @@ func initialize(planet_data: PlanetData) -> void:
 	_build_atmosphere_shell()
 	_build_scatter_multimeshes()
 
+	if is_aurelia():
+		_landing = AURELIA_LANDING.new()
+		_landing.name = "AureliaLanding"
+		add_child(_landing)
+		_landing.build(self, AURELIA_START_DIRECTION)
+
 	_ecosystem_root = Node3D.new()
 	_ecosystem_root.name = "EcosystemRoot"
 	add_child(_ecosystem_root)
@@ -85,8 +96,16 @@ func _process(delta: float) -> void:
 		_distant_proxy_inst.visible = not near_detail
 	if is_instance_valid(_ocean_mesh_inst):
 		_ocean_mesh_inst.visible = near_detail
+	if is_instance_valid(_flora_multimesh):
+		_flora_multimesh.visible = near_detail
+	if is_instance_valid(_rock_multimesh):
+		_rock_multimesh.visible = near_detail
 	if is_instance_valid(_atmosphere_mesh_inst):
-		_atmosphere_mesh_inst.visible = dist <= (atmo_edge + 2600.0)
+		_atmosphere_mesh_inst.visible = dist > data.radius + data.atmosphere_height * 0.42 and dist <= (atmo_edge + 2600.0)
+
+
+func is_aurelia() -> bool:
+	return planet_name == "Aurelia Prime"
 
 
 func get_surface_radius_at_dir(unit_dir: Vector3) -> float:
@@ -97,6 +116,13 @@ func get_surface_radius_at_dir(unit_dir: Vector3) -> float:
 	var h: float = (n1 + n2) * data.terrain_amplitude
 	if h < 0.0:
 		h *= 0.65
+	if is_aurelia():
+		var site := AURELIA_START_DIRECTION
+		var site_distance := site.distance_to(dir) * data.radius
+		var shelf := 9.0 + n1 * 3.2 + n2 * 9.0
+		var ridge_distance := (site + Vector3(0.18, -0.044, 0.10)).normalized().distance_to(dir) * data.radius
+		h += (1.0 - smoothstep(7.0, 64.0, ridge_distance)) * 26.0
+		h = lerpf(shelf, h, smoothstep(29.0, 98.0, site_distance))
 	return data.radius + h
 
 
@@ -150,8 +176,8 @@ func get_sky_colors() -> Dictionary:
 
 
 func _build_terrain() -> void:
-	# 34x34 grid per cube-sphere face = 6,534 quads (13,068 tris) per planet
-	var res: int = 34
+	# Keep identical subdivisions on all faces so cube-sphere seams stay watertight.
+	var res: int = 49 if is_aurelia() else 34
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 
@@ -212,11 +238,26 @@ func _build_terrain() -> void:
 	mat.vertex_color_use_as_albedo = true
 	mat.roughness = 0.88
 	mat.metallic = 0.04
-	array_mesh.surface_set_material(0, mat)
+	if is_aurelia():
+		var terrain_material := ShaderMaterial.new()
+		terrain_material.shader = AURELIA_TERRAIN
+		var grain := NoiseTexture2D.new()
+		grain.width = 128
+		grain.height = 128
+		grain.seamless = true
+		var texture_noise := FastNoiseLite.new()
+		texture_noise.seed = data.seed_value
+		texture_noise.frequency = 0.065
+		grain.noise = texture_noise
+		terrain_material.set_shader_parameter("surface_grain", grain)
+		array_mesh.surface_set_material(0, terrain_material)
+	else:
+		array_mesh.surface_set_material(0, mat)
 
 	_terrain_mesh_inst = MeshInstance3D.new()
 	_terrain_mesh_inst.name = "TerrainMesh"
 	_terrain_mesh_inst.mesh = array_mesh
+	_terrain_mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_terrain_mesh_inst)
 
 	_terrain_collider = CollisionShape3D.new()
@@ -236,6 +277,7 @@ func _build_distant_proxy() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = data.lowland_color.lerp(data.ocean_color, 0.35 if data.has_ocean else 0.0)
 	mat.roughness = 0.82
+	mat.disable_fog = true
 	sphere.material = mat
 
 	_distant_proxy_inst = MeshInstance3D.new()
@@ -277,7 +319,8 @@ func _build_ocean() -> void:
 
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = data.ocean_color
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	if data.ocean_color.a < 0.99:
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.roughness = 0.18
 	mat.metallic = 0.25
 	sphere.material = mat
@@ -299,7 +342,7 @@ func _build_atmosphere_shell() -> void:
 	var shader := Shader.new()
 	shader.code = """
 shader_type spatial;
-render_mode blend_add, depth_draw_never, cull_front, unshaded;
+render_mode blend_add, depth_draw_never, cull_front, unshaded, fog_disabled;
 
 uniform vec4 rim_color : source_color = vec4(0.3, 0.75, 1.0, 1.0);
 
@@ -349,7 +392,7 @@ func _build_scatter_multimeshes() -> void:
 		var ref: Vector3 = Vector3.RIGHT if absf(up.y) > 0.9 else Vector3.UP
 		var right: Vector3 = ref.cross(up).normalized()
 		var fwd: Vector3 = up.cross(right).normalized()
-		var b := Basis(right, up, fwd).rotated(up, rng.randf_range(0.0, TAU))
+		var b := Basis(right, up, -fwd).rotated(up, rng.randf_range(0.0, TAU))
 		var sc: float = rng.randf_range(0.75, 1.55)
 		b = b.scaled(Vector3.ONE * sc)
 		tree_mm.set_instance_transform(placed_trees, Transform3D(b, dir * (r - 0.25)))
@@ -390,7 +433,7 @@ func _build_scatter_multimeshes() -> void:
 		var ref: Vector3 = Vector3.RIGHT if absf(up.y) > 0.9 else Vector3.UP
 		var right: Vector3 = ref.cross(up).normalized()
 		var fwd: Vector3 = up.cross(right).normalized()
-		var b := Basis(right, up, fwd).rotated(up, rng.randf_range(0.0, TAU))
+		var b := Basis(right, up, -fwd).rotated(up, rng.randf_range(0.0, TAU))
 		b = b.scaled(Vector3(rng.randf_range(0.7, 2.2), rng.randf_range(0.6, 1.8), rng.randf_range(0.7, 2.2)))
 		rock_mm.set_instance_transform(i, Transform3D(b, dir * (r - 0.3)))
 		var is_crystal: bool = (i % 5 == 0)
@@ -451,6 +494,10 @@ func _create_stylized_tree_mesh() -> ArrayMesh:
 
 func _activate_ecosystem() -> void:
 	_ecosystem_active = true
+	if is_instance_valid(_landing):
+		for offset: Vector2 in [Vector2(13, 25), Vector2(-12, 31)]:
+			var point: Vector3 = _landing.surface_at_offset(offset)
+			_spawn_creature(point.normalized(), 0.6, Color("#df9d6e"), 1.1)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = data.seed_value + 999
 
@@ -467,13 +514,7 @@ func _activate_ecosystem() -> void:
 	var creature_limit: int = int(data.wildlife_count * QualityManager.scatter_density_multiplier) + 3
 	for i in range(creature_limit):
 		var dir := _pick_land_direction(rng)
-		var r: float = get_surface_radius_at_dir(dir)
-		var creature := CREATURE_SCENE.instantiate()
-		_ecosystem_root.add_child(creature)
-		creature.position = dir * (r + 1.0)
-		_align_node_to_up(creature, dir)
-		if creature.has_method("setup_planet"):
-			creature.setup_planet(self, data.crystal_color, rng.randf_range(0.85, 1.45))
+		_spawn_creature(dir, 1.0, data.crystal_color, rng.randf_range(0.85, 1.45))
 
 	if data.has_hostiles:
 		for i in range(4):
@@ -485,6 +526,14 @@ func _activate_ecosystem() -> void:
 			_align_node_to_up(sentinel, dir)
 			if sentinel.has_method("setup_planet"):
 				sentinel.setup_planet(self)
+
+
+func _spawn_creature(direction: Vector3, clearance: float, tint: Color, size: float) -> void:
+	var creature := CREATURE_SCENE.instantiate() as CharacterBody3D
+	_ecosystem_root.add_child(creature)
+	creature.position = direction * (get_surface_radius_at_dir(direction) + clearance)
+	_align_node_to_up(creature, direction)
+	creature.setup_planet(self, tint, size)
 
 
 func _deactivate_ecosystem() -> void:
@@ -509,4 +558,4 @@ func _align_node_to_up(node: Node3D, up_dir: Vector3) -> void:
 	var ref: Vector3 = Vector3.RIGHT if absf(up.y) > 0.9 else Vector3.UP
 	var right: Vector3 = ref.cross(up).normalized()
 	var fwd: Vector3 = up.cross(right).normalized()
-	node.basis = Basis(right, up, fwd)
+	node.basis = Basis(right, up, -fwd)

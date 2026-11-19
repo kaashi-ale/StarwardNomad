@@ -21,7 +21,8 @@ func _process(_delta: float) -> void:
 
 func set_space_visibility(space_factor: float) -> void:
 	if _star_mat:
-		var alpha: float = clampf(space_factor, 0.08, 1.0)
+		visible = space_factor > 0.16
+		var alpha := smoothstep(0.16, 1.0, space_factor)
 		_star_mat.albedo_color = Color(1.0, 1.0, 1.0, alpha)
 
 
@@ -34,7 +35,7 @@ func _build_stars() -> void:
 	_star_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	_star_mat.vertex_color_use_as_albedo = true
 	_star_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_star_mat.no_depth_test = false
+	_star_mat.disable_fog = true
 	quad.material = _star_mat
 
 	var mm := MultiMesh.new()

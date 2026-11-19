@@ -43,7 +43,7 @@ func _physics_process(delta: float) -> void:
 
 			if tangent_to_player.length_squared() > 0.01:
 				var right: Vector3 = tangent_to_player.cross(up_dir).normalized()
-				global_transform.basis = global_transform.basis.slerp(Basis(right, up_dir, -tangent_to_player), clampf(delta * 8.0, 0.0, 1.0))
+				global_transform.basis = global_transform.basis.orthonormalized().slerp(Basis(right, up_dir, -tangent_to_player), clampf(delta * 8.0, 0.0, 1.0))
 
 			_fire_timer -= delta
 			if _fire_timer <= 0.0:

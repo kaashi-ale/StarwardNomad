@@ -5,6 +5,7 @@ var _velocity: Vector3 = Vector3.ZERO
 var _damage: float = 20.0
 var _from_player: bool = true
 var _lifetime: float = 2.2
+var _spent := false
 
 
 func _ready() -> void:
@@ -25,15 +26,26 @@ func launch(direction: Vector3, speed: float, dmg: float, from_player: bool) -> 
 
 
 func _physics_process(delta: float) -> void:
-	global_position += _velocity * delta
+	var next_position := global_position + _velocity * delta
+	var mask := 45 if _from_player else 39
+	var ray := PhysicsRayQueryParameters3D.create(global_position, next_position, mask)
+	var hit := get_world_3d().direct_space_state.intersect_ray(ray)
+	if not hit.is_empty():
+		global_position = hit["position"]
+		_on_body_entered(hit["collider"])
+		return
+	global_position = next_position
 	_lifetime -= delta
 	if _lifetime <= 0.0:
 		queue_free()
 
 
 func _on_body_entered(body: Node3D) -> void:
-	if _from_player and body == GameState.player_node:
+	if _spent or (_from_player and body == GameState.player_node):
 		return
+	if not _from_player and body.collision_layer & 8:
+		return
+	_spent = true
 	if not _from_player and body == GameState.player_node:
 		GameState.damage_player(_damage)
 		if is_instance_valid(GameState.audio_system):

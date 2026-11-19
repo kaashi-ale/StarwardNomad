@@ -34,8 +34,10 @@ environment = SubResource("Environment_main")
 
 [node name="SunLight" type="DirectionalLight3D" parent="." groups=["sun_light"]]
 transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 500, 0)
-light_color = Color(1, 0.96, 0.88, 1)
-light_energy = 1.35
+light_color = Color(1, 0.88, 0.73, 1)
+light_energy = 1.15
+directional_shadow_mode = 0
+directional_shadow_max_distance = 56.0
 shadow_enabled = false
 
 [node name="FloatingOrigin" type="Node" parent="."]

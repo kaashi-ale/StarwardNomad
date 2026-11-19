@@ -1,41 +1,19 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://Player/Player.gd" id="1_player"]
 [ext_resource type="Script" path="res://Player/PlayerCamera.gd" id="2_cam"]
+
+[ext_resource type="Script" path="res://Player/ExplorerSuit.gd" id="3_suit"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.42
 height = 1.75
 
-[sub_resource type="StandardMaterial3D" id="Mat_suit"]
-albedo_color = Color(0.88, 0.92, 0.96, 1)
-roughness = 0.45
-
-[sub_resource type="CapsuleMesh" id="Mesh_torso"]
-material = SubResource("Mat_suit")
-radius = 0.36
-height = 1.45
-radial_segments = 10
-rings = 4
-
-[sub_resource type="StandardMaterial3D" id="Mat_visor"]
-albedo_color = Color(0.12, 0.78, 0.95, 1)
-metallic = 0.65
-roughness = 0.15
-
-[sub_resource type="SphereMesh" id="Mesh_helmet"]
-material = SubResource("Mat_visor")
-radius = 0.28
-height = 0.56
-radial_segments = 10
-rings = 6
-
-[sub_resource type="BoxMesh" id="Mesh_blaster"]
-size = Vector3(0.12, 0.16, 0.58)
-
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
-collision_mask = 1
+collision_mask = 37
+floor_snap_length = 0.38
+floor_stop_on_slope = true
 script = ExtResource("1_player")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
@@ -43,18 +21,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 shape = SubResource("CapsuleShape3D_body")
 
 [node name="VisualRoot" type="Node3D" parent="."]
-
-[node name="TorsoMesh" type="MeshInstance3D" parent="VisualRoot"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
-mesh = SubResource("Mesh_torso")
-
-[node name="HelmetMesh" type="MeshInstance3D" parent="VisualRoot"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.58, -0.05)
-mesh = SubResource("Mesh_helmet")
-
-[node name="BlasterMesh" type="MeshInstance3D" parent="VisualRoot"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.34, 1.05, -0.35)
-mesh = SubResource("Mesh_blaster")
+script = ExtResource("3_suit")
 
 [node name="MuzzlePoint" type="Marker3D" parent="VisualRoot"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.34, 1.05, -0.72)
