@@ -14,3 +14,9 @@ Alteração: inventário com licenças e fontes oficiais de KayKit, Quaternius e
 Objetivo: preparar a seleção de modelos estilizados para Aurelia Prime.
 Downloads: KayKit e Quaternius exigem interação no itch.io. O link oficial da Kenney retornou HTTP 403.
 Capturas: docs/screenshots/bosque-e-vale-do-trevo/ serve de referência. Integração e medição no Moto G04s pendentes.
+
+2026-11-19 | Modelos estilizados no Bosque do Arco
+Alteração: três árvores, arbusto e rocha do KayKit, mais samambaia e flor da Quaternius, integrados aos lotes existentes.
+Objetivo: usar modelos texturizados CC0 com escala adaptada, atlas compartilhados e LOD no perfil Econômico.
+Capturas: docs/screenshots/modelos-do-bosque/
+Android: teste de aparência e desempenho no Moto G04s pendente.

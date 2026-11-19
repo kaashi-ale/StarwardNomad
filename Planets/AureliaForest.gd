@@ -2,6 +2,16 @@ extends StaticBody3D
 ## A hand-shaped grove along the curved survey trail between the gate and arch.
 
 const MODELS := preload("res://Planets/AureliaForestMeshes.gd")
+const TREES := [
+	"res://Assets/Environment/Trees/oak-rounded.gltf",
+	"res://Assets/Environment/Trees/oak-spreading.gltf",
+	"res://Assets/Environment/Trees/tree-tall.gltf",
+]
+const TRUNK_RADII := [0.77, 0.24, 0.41]
+const SHRUB := "res://Assets/Environment/Shrubs/forest-shrub.gltf"
+const FERN := "res://Assets/Environment/Plants/woodland-fern.gltf"
+const WILDFLOWER := "res://Assets/Environment/Flowers/trail-wildflower.gltf"
+const STONE := "res://Assets/Environment/Rocks/weathered-stone.gltf"
 const CENTER := Vector2(12.0, 66.0)
 const EXTENT := Vector2(69.0, 77.0)
 const ARCH := Vector2(25.0, 61.0)
@@ -14,8 +24,8 @@ var _planet: Node3D
 var _ground: PhysicsDirectSpaceState3D
 var _rng := RandomNumberGenerator.new()
 var _cover: Array[MultiMesh] = []
-var _canopy: Array[MultiMesh] = []
-var _compact_canopy := false
+var _canopy: Array[MultiMeshInstance3D] = []
+var _stone: Mesh
 
 
 static func contains_offset(offset: Vector2) -> bool:
@@ -44,7 +54,7 @@ func build(landing: Node3D, planet: Node3D) -> void:
 	_planet = planet
 	_ground = get_world_3d().direct_space_state
 	_rng.seed = 55102
-	_compact_canopy = QualityManager.current_preset == QualityManager.Preset.ECONOMY
+	_stone = _import_mesh(STONE)
 	_build_canopy()
 	_build_understory()
 	_build_deadwood()
@@ -77,7 +87,9 @@ func _build_canopy() -> void:
 				if added == 5:
 					break
 
-	var models := _tree_models(_compact_canopy)
+	var models: Array[Mesh] = []
+	for path: String in TREES:
+		models.append(_import_mesh(path))
 	for section in range(2):
 		for variant in range(3):
 			var transforms: Array[Transform3D] = []
@@ -90,17 +102,24 @@ func _build_canopy() -> void:
 				var proportions := Vector3(size * _rng.randf_range(0.85, 1.15), size, size)
 				transforms.append(Transform3D(ground.basis * Basis.from_scale(proportions), ground.origin))
 				var trunk := CylinderShape3D.new()
-				trunk.radius = 0.37 * maxf(proportions.x, proportions.z)
+				trunk.radius = TRUNK_RADII[variant] * maxf(proportions.x, proportions.z)
 				trunk.height = 4.35 * size
 				_add_collision(trunk, ground.translated_local(Vector3.UP * (trunk.height * 0.5 - 0.12)))
-			_canopy.append(_batch("Canopy%d_%d" % [section, variant], models[variant], transforms))
+			var batch_name := "Canopy%d_%d" % [section, variant]
+			_batch(batch_name, models[variant], transforms)
+			_canopy.append(get_node(batch_name) as MultiMeshInstance3D)
 
 
-func _tree_models(compact: bool) -> Array[ArrayMesh]:
-	var meshes: Array[ArrayMesh] = []
-	for variant in range(3):
-		meshes.append(MODELS.new().tree(variant, compact))
-	return meshes
+func _import_mesh(path: String) -> Mesh:
+	# The catalog contains static, single-mesh scenes with baked dimensions.
+	var scene := load(path) as PackedScene
+	var model := scene.instantiate()
+	var instance := model as MeshInstance3D
+	if instance == null:
+		instance = model.get_child(0) as MeshInstance3D
+	var mesh := instance.mesh
+	model.free()
+	return mesh
 
 
 func _build_understory() -> void:
@@ -139,10 +158,10 @@ func _build_understory() -> void:
 				ferns.append(_scaled_pose(offset, _rng.randf_range(0.78, 1.45)))
 			else:
 				stones.append(_scaled_pose(offset, _rng.randf_range(0.35, 0.77)))
-	_cover.append(_batch("Understory", MODELS.new().shrub(), shrubs))
-	_cover.append(_batch("FernBanks", MODELS.new().fern(), ferns))
-	_cover.append(_batch("Wildflowers", MODELS.new().flowers(), blossoms))
-	_cover.append(_batch("LooseStone", MODELS.new().stone(), stones))
+	_cover.append(_batch("Understory", _import_mesh(SHRUB), shrubs))
+	_cover.append(_batch("FernBanks", _import_mesh(FERN), ferns))
+	_cover.append(_batch("Wildflowers", _import_mesh(WILDFLOWER), blossoms))
+	_cover.append(_batch("LooseStone", _stone, stones))
 
 
 func _build_deadwood() -> void:
@@ -166,7 +185,7 @@ func _build_deadwood() -> void:
 		var boulder := SphereShape3D.new()
 		boulder.radius = size * 0.54
 		_add_collision(boulder, pose.translated_local(Vector3.UP * 0.16 * size))
-	_batch("WeatheredBoulders", MODELS.new().stone(), formations)
+	_batch("WeatheredBoulders", _stone, formations)
 
 
 func _scaled_pose(offset: Vector2, size: float) -> Transform3D:
@@ -196,7 +215,7 @@ func _add_collision(shape: Shape3D, placement: Transform3D) -> void:
 	collider.transform = placement
 
 
-func _batch(label: String, mesh: ArrayMesh, transforms: Array[Transform3D]) -> MultiMesh:
+func _batch(label: String, mesh: Mesh, transforms: Array[Transform3D]) -> MultiMesh:
 	var instances := MultiMesh.new()
 	instances.transform_format = MultiMesh.TRANSFORM_3D
 	instances.use_colors = true
@@ -223,12 +242,8 @@ func _batch(label: String, mesh: ArrayMesh, transforms: Array[Transform3D]) -> M
 
 
 func _apply_quality(preset: int) -> void:
-	var compact := preset == QualityManager.Preset.ECONOMY
-	if compact != _compact_canopy:
-		_compact_canopy = compact
-		var models := _tree_models(compact)
-		for variant in range(_canopy.size()):
-			_canopy[variant].mesh = models[variant % 3]
+	for batch: MultiMeshInstance3D in _canopy:
+		batch.lod_bias = 0.70 if preset == QualityManager.Preset.ECONOMY else 1.0
 	var visible_fraction := 1.0
 	if preset == QualityManager.Preset.ECONOMY:
 		visible_fraction = 0.44
