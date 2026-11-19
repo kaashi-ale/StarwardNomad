@@ -13,6 +13,7 @@ const AURELIA_LANDING := preload("res://Planets/AureliaLanding.gd")
 const AURELIA_TERRAIN := preload("res://Planets/AureliaTerrain.gdshader")
 
 var _landing: Node3D
+var _village_up := Vector3.ZERO
 var data: PlanetData
 var planet_name: String = "Planet"
 
@@ -43,6 +44,11 @@ func initialize(planet_data: PlanetData) -> void:
 	data = planet_data
 	planet_name = data.planet_name
 	name = planet_name.replace(" ", "_")
+	if is_aurelia():
+		var site := AURELIA_START_DIRECTION
+		var right := Vector3.RIGHT.cross(site).normalized()
+		var offset: Vector2 = AURELIA_LANDING.VILLAGE_CENTER
+		_village_up = (site * (data.radius + 9.0) + right * offset.x + site.cross(right) * offset.y).normalized()
 
 	_noise = FastNoiseLite.new()
 	_noise.seed = data.seed_value
@@ -162,6 +168,10 @@ func get_surface_radius_at_dir(unit_dir: Vector3) -> float:
 		var ridge_distance := (site + Vector3(0.055, -0.013, 0.032)).normalized().distance_to(dir) * data.radius
 		h += (1.0 - smoothstep(7.0, 64.0, ridge_distance)) * 26.0
 		h = lerpf(shelf, h, smoothstep(45.0, 140.0, site_distance))
+		var village_distance := dir.distance_to(_village_up) * data.radius
+		if village_distance < 77.0:
+			var plaza := (data.radius + 9.0) / dir.dot(_village_up) - data.radius
+			h = lerpf(plaza, h, smoothstep(47.0, 77.0, village_distance))
 	return data.radius + h
 
 

@@ -27,11 +27,11 @@ func tree(variant: int, compact: bool) -> ArrayMesh:
 	for i in range(5):
 		var angle := i * 2.399 + variant * 0.88
 		var direction := Vector3(cos(angle), 0, sin(angle))
-		var outward := (2.0 if variant == 1 else 1.6) + rng.randf_range(-0.18, 0.36)
+		var outward := (2.12 if variant == 1 else 1.55) + rng.randf_range(-0.32, 0.50)
 		var end := fork + direction * outward + Vector3.UP * (height * 0.24 + rng.randf_range(-0.5, 0.5))
 		var start := fork - Vector3.UP * rng.randf_range(0.15, 0.87)
 		_tube([start, start.lerp(end, 0.55) - Vector3.UP * 0.17, end], [0.14, 0.095, 0.039], bark, 5)
-		var dimensions := Vector3(2.8, 2.05, 2.3) if variant == 1 else Vector3(2.45, 2.35, 2.15)
+		var dimensions := Vector3(3.0, 1.98, 2.55) if variant == 1 else Vector3(2.37, 2.48, 2.15)
 		_lobe(end + Vector3.UP * 0.45, dimensions * rng.randf_range(0.82, 1.15), leaf.lightened(rng.randf_range(-0.1, 0.16)), angle, crown_sides, crown_rows)
 	_lobe(tip - Vector3.UP * 0.07, Vector3(3.1, 2.15 if variant == 1 else 3.15, 2.73), leaf.lightened(0.12), variant, crown_sides, crown_rows)
 	return _finish()
@@ -147,7 +147,9 @@ func _lobe(center: Vector3, dimensions: Vector3, tint: Color, seed_value: float,
 	for index in indices:
 		var point := vertices[index]
 		# Ripple each crown consistently at its seams and poles.
-		var shell := 1.0 + sin(point.x * 14.0 + point.z * 8.0 + seed_value) * sin(point.y * 10.0 + point.z * 9.0) * 0.15
+		var broad_shape := sin(point.x * 7.3 + point.y * 3.4 + seed_value) * cos(point.z * 6.3 + point.y * 2.2)
+		var edge := sin(point.x * 14.0 + point.z * 8.0 + seed_value) * sin(point.y * 10.0 + point.z * 9.0)
+		var shell := 1.0 + broad_shape * 0.13 + edge * 0.061
 		var color := tint.darkened(maxf(0.0, -point.y) * 0.42).lightened(maxf(0.0, point.y) * 0.16)
 		_surface.set_color(color)
 		_surface.add_vertex(center + point * dimensions * shell)

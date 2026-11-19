@@ -2,7 +2,11 @@ extends StaticBody3D
 ## A hand-shaped grove along the curved survey trail between the gate and arch.
 
 const MODELS := preload("res://Planets/AureliaForestMeshes.gd")
-const CENTER := Vector2(25.0, 63.0)
+const CENTER := Vector2(12.0, 66.0)
+const EXTENT := Vector2(69.0, 77.0)
+const ARCH := Vector2(25.0, 61.0)
+const VILLAGE := Vector2(28.0, 104.0)
+const LANDING_MEADOW := Vector2(56.0, 88.0)
 const CLEARING := Vector2(12.5, 69.0)
 
 var _landing: Node3D
@@ -15,12 +19,24 @@ var _compact_canopy := false
 
 
 static func contains_offset(offset: Vector2) -> bool:
-	return ((offset - CENTER) / Vector2(28.0, 29.0)).length_squared() < 1.0 and offset.x > 1.5
+	return ((offset - CENTER) / EXTENT).length_squared() < 1.0
 
 
 static func trail_x(y: float) -> float:
-	var distance := y - 61.0
-	return 25.0 + distance * 0.68 + 3.1 * sin(distance * 0.105)
+	return 5.0 + 20.0 * smoothstep(7.0, ARCH.y, y) + 3.0 * smoothstep(ARCH.y, VILLAGE.y, y)
+
+
+static func is_village_open(offset: Vector2) -> bool:
+	return ((offset - VILLAGE) / Vector2(23.0, 28.0)).length_squared() < 1.0
+
+
+static func is_corridor_open(offset: Vector2) -> bool:
+	return (offset.length() < 18.0
+		or absf(offset.x - trail_x(offset.y)) < 3.8
+		or offset.distance_to(ARCH) < 8.2
+		or offset.distance_to(Vector2(-2, 37)) < 8.2
+		or offset.distance_to(LANDING_MEADOW) < 10.5
+		or is_village_open(offset))
 
 
 func build(landing: Node3D, planet: Node3D) -> void:
@@ -37,28 +53,54 @@ func build(landing: Node3D, planet: Node3D) -> void:
 
 
 func _build_canopy() -> void:
-	# A staggered canopy on both sides preserves sightlines to the arch and the clearing.
-	var tree_sites: Array[Vector2] = [
-		Vector2(5, 45), Vector2(16, 44), Vector2(20, 42), Vector2(23, 46),
-		Vector2(7, 52), Vector2(11, 54), Vector2(30, 48), Vector2(35, 51),
-		Vector2(6, 59), Vector2(13, 60), Vector2(17, 64), Vector2(38, 55),
-		Vector2(6, 68), Vector2(20, 72), Vector2(23, 75), Vector2(39, 64),
-		Vector2(10, 78), Vector2(14, 81), Vector2(20, 85), Vector2(29, 86),
-		Vector2(25, 80), Vector2(35, 80), Vector2(44, 74), Vector2(47, 67),
-		Vector2(43, 58), Vector2(33, 56), Vector2(48, 59),
+	var tree_sites: Array[Vector2] = []
+	var centers: Array[Vector2] = [
+		Vector2(-12, 19), Vector2(23, 21), Vector2(-28, 39), Vector2(38, 41),
+		Vector2(-19, 61), Vector2(5, 54), Vector2(35, 55), Vector2(56, 64),
+		Vector2(-17, 85), Vector2(4, 83), Vector2(44, 76), Vector2(49, 105),
+		Vector2(-1, 107), Vector2(2, 119), Vector2(18, 130), Vector2(47, 125), Vector2(58, 116),
 	]
+	for center in centers:
+		var added := 0
+		for attempt in range(17):
+			var offset := center + Vector2(_rng.randf_range(-9, 9), _rng.randf_range(-10, 10))
+			if not contains_offset(offset) or is_corridor_open(offset) or offset.distance_to(CLEARING) < 5.9:
+				continue
+			var spaced := true
+			for planted in tree_sites:
+				if offset.distance_squared_to(planted) < 15.0:
+					spaced = false
+					break
+			if spaced:
+				tree_sites.append(offset)
+				added += 1
+				if added == 5:
+					break
+
+	var models := _tree_models(_compact_canopy)
+	for section in range(2):
+		for variant in range(3):
+			var transforms: Array[Transform3D] = []
+			for index in range(variant, tree_sites.size(), 3):
+				var offset := tree_sites[index]
+				if int(offset.y >= 76.0) != section:
+					continue
+				var ground := _ground_pose(offset)
+				var size := _rng.randf_range(0.70, 1.27)
+				var proportions := Vector3(size * _rng.randf_range(0.85, 1.15), size, size)
+				transforms.append(Transform3D(ground.basis * Basis.from_scale(proportions), ground.origin))
+				var trunk := CylinderShape3D.new()
+				trunk.radius = 0.37 * maxf(proportions.x, proportions.z)
+				trunk.height = 4.35 * size
+				_add_collision(trunk, ground.translated_local(Vector3.UP * (trunk.height * 0.5 - 0.12)))
+			_canopy.append(_batch("Canopy%d_%d" % [section, variant], models[variant], transforms))
+
+
+func _tree_models(compact: bool) -> Array[ArrayMesh]:
+	var meshes: Array[ArrayMesh] = []
 	for variant in range(3):
-		var transforms: Array[Transform3D] = []
-		for index in range(variant, tree_sites.size(), 3):
-			var ground := _ground_pose(tree_sites[index])
-			var size := _rng.randf_range(0.72, 1.24)
-			var proportions := Vector3(size * _rng.randf_range(0.91, 1.12), size, size)
-			transforms.append(Transform3D(ground.basis * Basis.from_scale(proportions), ground.origin))
-			var trunk := CylinderShape3D.new()
-			trunk.radius = 0.37 * maxf(proportions.x, proportions.z)
-			trunk.height = 4.35 * size
-			_add_collision(trunk, ground.translated_local(Vector3.UP * (trunk.height * 0.5 - 0.12)))
-		_canopy.append(_batch("Canopy%d" % variant, MODELS.new().tree(variant, _compact_canopy), transforms))
+		meshes.append(MODELS.new().tree(variant, compact))
+	return meshes
 
 
 func _build_understory() -> void:
@@ -66,20 +108,20 @@ func _build_understory() -> void:
 	var ferns: Array[Transform3D] = []
 	var blossoms: Array[Transform3D] = []
 	var stones: Array[Transform3D] = []
-	for y: float in [42.0, 46.0, 49.0, 54.0, 71.0, 75.0]:
+	for y: float in [21.0, 29.0, 42.0, 46.0, 49.0, 54.0, 71.0, 78.0, 87.0]:
 		var x := trail_x(y)
 		blossoms.append(_scaled_pose(Vector2(x + 2.9, y), _rng.randf_range(1.1, 1.5)))
 		blossoms.append(_scaled_pose(Vector2(x + 3.4, y + 0.53), _rng.randf_range(0.74, 1.1)))
 		ferns.append(_scaled_pose(Vector2(x - 3.1, y + 0.3), _rng.randf_range(1.12, 1.52)))
-	for i in range(330):
+	for i in range(530):
 		var angle := _rng.randf_range(0, TAU)
 		var radial := sqrt(_rng.randf())
-		var offset := CENTER + Vector2(cos(angle) * 27.0, sin(angle) * 27.0) * radial
-		if not contains_offset(offset) or offset.distance_to(Vector2(25, 61)) < 7.6:
+		var offset := CENTER + Vector2(cos(angle), sin(angle)) * EXTENT * radial
+		if not contains_offset(offset) or is_village_open(offset) or offset.length() < 16.0 or offset.distance_to(LANDING_MEADOW) < 10.5:
 			continue
 		var trail_distance := absf(offset.x - trail_x(offset.y))
 		var clearing_distance := offset.distance_to(CLEARING)
-		if trail_distance < 2.5 or clearing_distance < 3.6:
+		if trail_distance < 2.55 or clearing_distance < 3.6 or offset.distance_to(ARCH) < 3.8:
 			continue
 		var patch := sin(offset.x * 0.43 + offset.y * 0.11) + cos(offset.y * 0.46 - offset.x * 0.18)
 		var roll := _rng.randf()
@@ -105,7 +147,7 @@ func _build_understory() -> void:
 
 func _build_deadwood() -> void:
 	var logs: Array[Transform3D] = []
-	for offset: Vector2 in [Vector2(11, 65), Vector2(35, 59), Vector2(28, 82)]:
+	for offset: Vector2 in [Vector2(11, 65), Vector2(35, 59), Vector2(38, 82), Vector2(-18, 30), Vector2(5, 102), Vector2(54, 112)]:
 		var pose := _ground_pose(offset)
 		var size := _rng.randf_range(0.97, 1.30)
 		logs.append(Transform3D(pose.basis.scaled(Vector3.ONE * size), pose.origin))
@@ -117,7 +159,7 @@ func _build_deadwood() -> void:
 	_batch("FallenWood", MODELS.new().log_model(), logs)
 
 	var formations: Array[Transform3D] = []
-	for offset: Vector2 in [Vector2(8, 57), Vector2(17, 71), Vector2(37, 52), Vector2(35, 70), Vector2(15, 78)]:
+	for offset: Vector2 in [Vector2(8, 57), Vector2(17, 71), Vector2(37, 52), Vector2(35, 70), Vector2(15, 78), Vector2(-13, 46), Vector2(6, 22), Vector2(57, 74)]:
 		var pose := _ground_pose(offset)
 		var size := _rng.randf_range(1.1, 1.7)
 		formations.append(Transform3D(pose.basis.scaled(Vector3.ONE * size), pose.origin))
@@ -160,14 +202,21 @@ func _batch(label: String, mesh: ArrayMesh, transforms: Array[Transform3D]) -> M
 	instances.use_colors = true
 	instances.mesh = mesh
 	instances.instance_count = transforms.size()
+	var anchor := Vector3.ZERO
+	for pose in transforms:
+		anchor += pose.origin
+	anchor /= maxf(1.0, transforms.size())
 	for i in range(transforms.size()):
-		instances.set_instance_transform(i, transforms[i])
+		var pose := transforms[i]
+		pose.origin -= anchor
+		instances.set_instance_transform(i, pose)
 		instances.set_instance_color(i, Color("#c5cdaf").lerp(Color.WHITE, _rng.randf_range(0.37, 1.0)))
 	var display := MultiMeshInstance3D.new()
 	display.name = label
 	display.multimesh = instances
 	display.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	display.visibility_range_end = 175.0
+	display.position = anchor
+	display.visibility_range_end = 126.0
 	display.visibility_range_end_margin = 12.0
 	add_child(display)
 	return instances
@@ -177,12 +226,13 @@ func _apply_quality(preset: int) -> void:
 	var compact := preset == QualityManager.Preset.ECONOMY
 	if compact != _compact_canopy:
 		_compact_canopy = compact
+		var models := _tree_models(compact)
 		for variant in range(_canopy.size()):
-			_canopy[variant].mesh = MODELS.new().tree(variant, compact)
+			_canopy[variant].mesh = models[variant % 3]
 	var visible_fraction := 1.0
 	if preset == QualityManager.Preset.ECONOMY:
-		visible_fraction = 0.56
+		visible_fraction = 0.44
 	elif preset == QualityManager.Preset.LOW:
-		visible_fraction = 0.77
+		visible_fraction = 0.65
 	for batch: MultiMesh in _cover:
 		batch.visible_instance_count = roundi(batch.instance_count * visible_fraction)

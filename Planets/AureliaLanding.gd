@@ -3,7 +3,7 @@ extends Node3D
 
 const FOREST := preload("res://Planets/AureliaForest.gd")
 const VILLAGE := preload("res://Planets/AureliaVillage.gd")
-const VILLAGE_CENTER := Vector2(-29.0, 64.0)
+const VILLAGE_CENTER := FOREST.VILLAGE
 const MONOLITH := preload("res://Combat/AncientMonolith.tscn")
 
 var _planet: Node3D
@@ -17,7 +17,7 @@ func build(planet: Node3D, up: Vector3) -> void:
 	_right = Vector3.RIGHT.cross(up).normalized()
 	_forward = up.cross(_right)
 	_origin = up * _planet.get_surface_radius_at_dir(up)
-	_build_grove()
+	_build_grove.call_deferred()
 	_build_gate()
 	_build_stone_arch()
 	_build_village.call_deferred()
@@ -59,6 +59,8 @@ func _build_village() -> void:
 
 
 func _build_grove() -> void:
+	await get_tree().physics_frame
+	var space := get_world_3d().direct_space_state
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1042
 	var rock := SphereMesh.new()
@@ -76,24 +78,24 @@ func _build_grove() -> void:
 	outcrops.collision_layer = 32
 	outcrops.collision_mask = 0
 	add_child(outcrops)
+	var stone_count := 0
 	for i in range(108):
 		var angle := rng.randf_range(0.0, TAU)
 		var radius := rng.randf_range(13.0, 130.0)
 		var offset := Vector2(cos(angle), sin(angle)) * radius
 		if absf(offset.x + 2.0) < 6.0 and offset.y > 0.0 and offset.y < 45.0:
 			offset.x += 9.0
-		if FOREST.contains_offset(offset):
-			offset += Vector2(32.0, -32.0)
-		if offset.distance_to(VILLAGE_CENTER) < 29.0:
-			offset.x -= 49.0
-		var point := surface_at_offset(offset)
 		var size := rng.randf_range(0.4, 2.5)
+		var tint := Color("#354447").lerp(Color("#827260"), rng.randf())
+		if FOREST.contains_offset(offset) or offset.distance_to(VILLAGE_CENTER) < 29.0:
+			continue
+		var point := _grounded_offset(offset, space)
 		if i % 8 == 0:
 			size *= 2.4
 		var orientation := _surface_basis(point).rotated(point.normalized(), angle)
 		var dimensions := Vector3(size * 1.45, size, size * 0.76)
 		var center := point + orientation.y * size * 0.15
-		rock_batch.set_instance_transform(i, Transform3D(orientation * Basis.from_scale(dimensions), center))
+		rock_batch.set_instance_transform(stone_count, Transform3D(orientation * Basis.from_scale(dimensions), center))
 		if size > 3.6:
 			var vertices: PackedVector3Array = rock.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 			for index in range(vertices.size()):
@@ -104,29 +106,41 @@ func _build_grove() -> void:
 			collider.shape = hull
 			outcrops.add_child(collider)
 			collider.transform = Transform3D(orientation, center)
-		rock_batch.set_instance_color(i, Color("#354447").lerp(Color("#827260"), rng.randf()))
+		rock_batch.set_instance_color(stone_count, tint)
+		stone_count += 1
+	rock_batch.visible_instance_count = stone_count
 
-	for i in range(50):
+	var fan_count := 0
+	for _i in range(50):
 		var angle := rng.randf_range(0.0, TAU)
 		var radius := rng.randf_range(15.0, 103.0)
 		var offset := Vector2(cos(angle), sin(angle)) * radius
-		if FOREST.contains_offset(offset):
-			offset += Vector2(30.0, -29.0)
-		if offset.distance_to(VILLAGE_CENTER) < 25.0:
-			offset.x -= 44.0
-		var point := surface_at_offset(offset)
 		var height := rng.randf_range(0.55, 2.7)
+		var is_open := not FOREST.contains_offset(offset) and offset.distance_to(VILLAGE_CENTER) >= 25.0
+		var point := _grounded_offset(offset, space) if is_open else Vector3.ZERO
 		for blade in range(3):
+			var tint := Color("#a94d32").lerp(Color("#efaf63"), rng.randf())
+			if not is_open:
+				continue
 			var local_rotation := Basis(Vector3.UP, angle + blade * TAU / 3.0) * Basis(Vector3.FORWARD, 0.49)
 			var orientation := _surface_basis(point) * local_rotation
 			var dimensions := Vector3(height * 0.75, height, height * 0.18)
-			var index := i * 3 + blade
-			fans.set_instance_transform(index, Transform3D(orientation * Basis.from_scale(dimensions), point + orientation.y * height * 0.46))
-			fans.set_instance_color(index, Color("#a94d32").lerp(Color("#efaf63"), rng.randf()))
+			fans.set_instance_transform(fan_count, Transform3D(orientation * Basis.from_scale(dimensions), point + orientation.y * height * 0.46))
+			fans.set_instance_color(fan_count, tint)
+			fan_count += 1
+	fans.visible_instance_count = fan_count
+
+
+func _grounded_offset(offset: Vector2, space: PhysicsDirectSpaceState3D) -> Vector3:
+	var local := surface_at_offset(offset)
+	var up := local.normalized()
+	var world := to_global(local)
+	var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(world + up * 29.0, world - up * 29.0, 1))
+	return local if hit.is_empty() else to_local(hit["position"])
 
 
 func _build_stone_arch() -> void:
-	var point := surface_at_offset(Vector2(25.0, 61.0))
+	var point := surface_at_offset(FOREST.ARCH)
 	var arch := StaticBody3D.new()
 	arch.name = "AureliaStoneArch"
 	arch.collision_layer = 32
@@ -135,8 +149,8 @@ func _build_stone_arch() -> void:
 	arch.transform = Transform3D(_surface_basis(point), point)
 
 	var stone := SphereMesh.new()
-	stone.radial_segments = 7
-	stone.rings = 3
+	stone.radial_segments = 8
+	stone.rings = 4
 	var material := StandardMaterial3D.new()
 	material.vertex_color_use_as_albedo = true
 	material.roughness = 0.96
@@ -148,15 +162,19 @@ func _build_stone_arch() -> void:
 	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
 	for i in range(7):
 		var angle := float(i) * PI / 6.0
-		var offset := Vector3(cos(angle) * 6.0, sin(angle) * 10.2, sin(angle * 2.0) * 0.75)
+		var offset := Vector3(cos(angle) * (6.0 + sin(angle * 2.4) * 0.5), sin(angle) * 9.65, sin(angle * 2.0) * 0.90)
 		var scale := Vector3(5.5, 8.2, 5.5) if i == 0 or i == 6 else Vector3(6.15, 6.7, 4.65)
 		var tilt := Basis(Vector3.BACK, angle * 0.8)
 		var vertices := PackedVector3Array()
 		for vertex in source:
-			vertices.append(tilt * (vertex * scale) + offset)
+			var weathering := 1.0 + 0.12 * sin(vertex.x * 11.0 + vertex.y * 9.0 + i) * cos(vertex.z * 10.0 + i)
+			vertices.append(tilt * (vertex * scale * weathering) + offset)
 		for index in indices:
 			var rock_tint := Color("#5e6858").lerp(Color("#a2977c"), smoothstep(0.0, 11.8, vertices[index].y))
-			rock_surface.set_color(rock_tint.darkened(0.055 * float(i % 3)))
+			var vertex := vertices[index]
+			var moisture := sin(vertex.x * 0.81 + vertex.z) * cos(vertex.z * 1.15 - vertex.y * 0.29)
+			var moss := smoothstep(0.05, 0.73, moisture + source[index].y * 0.49) * 0.76
+			rock_surface.set_color(rock_tint.darkened(0.065 * float(i % 3)).lerp(Color("#667844"), moss))
 			rock_surface.add_vertex(vertices[index])
 		var rock_shape := ConvexPolygonShape3D.new()
 		rock_shape.points = vertices

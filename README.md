@@ -4,13 +4,13 @@ Jogo 3D single-player de exploração espacial e planetária desenvolvido em **G
 
 ## Bosque do Arco
 
-Ao iniciar em Aurelia Prime, caminhe até o pórtico e contorne-o pela direita. Siga a trilha de terra até o arco natural. Entre as árvores de copas diferentes, a trilha passa por samambaias e flores silvestres. À esquerda da trilha há uma clareira com um tronco caído. O bosque tem aproximadamente 55 metros de extensão.
+Ao iniciar em Aurelia Prime, caminhe até o pórtico e contorne-o pela direita. Siga a trilha de terra até o arco natural. Entre as árvores de copas diferentes, a trilha passa por samambaias e flores silvestres. À esquerda da trilha há uma clareira com um tronco caído. A trilha atravessa o bosque e segue sob o arco até a clareira da vila.
 
 As árvores, os grandes rochedos e os troncos caídos têm colisão. No perfil **Econômico**, as copas usam malhas mais leves e a densidade de vegetação pequena é menor. A trilha, os obstáculos e o caminho até o arco são os mesmos nos demais perfis.
 
 ## Vale do Trevo e chamada da nave
 
-Em Aurelia Prime, siga à esquerda do pórtico para encontrar as casas de madeira, o poço e o curral do Vale do Trevo. Pressione **E** perto de Lina, Tomé ou Iara para conversar. No celular, toque em **Conversar** quando o nome aparecer.
+Em Aurelia Prime, siga a trilha à direita do pórtico e passe por baixo do arco para encontrar as casas, as hortas, o poço e o curral do Vale do Trevo. Pressione **E** perto de Lina, Tomé ou Iara para conversar. No celular, toque em **Conversar** quando o nome aparecer.
 
 Se deixar a nave para trás, use **R** no PC ou toque em **CHAMAR NAVE** no celular. A distância aparece no HUD e um marcador aponta para a nave quando ela está no campo de visão. A nave recolhe o trem de pouso, sobe, voa até uma clareira e pousa perto de você. A chamada funciona no mesmo planeta. Se a área estiver obstruída, vá a um campo aberto e chame novamente.
 

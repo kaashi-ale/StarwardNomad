@@ -2,3 +2,9 @@
 Alteração: reformulação da região entre o pórtico e o arco de Aurelia Prime, com árvores variadas, vegetação rasteira, trilha, clareira, pedras e troncos caídos.
 Objetivo: criar um trecho acolhedor para exploração a pé, mantendo a vila, a fauna, a nave e o perfil Econômico.
 Capturas: docs/screenshots/bosque-do-arco/
+
+2026-11-19 | Bosque do Arco e Vale do Trevo
+Alteração: bosque ampliado, trilha sob o arco com musgo e vila com casas refinadas, hortas e mobiliário rústico.
+Objetivo: ligar a nave ao vilarejo a pé, com clareiras e espaço para pousar.
+Capturas: docs/screenshots/bosque-e-vale-do-trevo/
+Android: falta validar o percurso, a chamada da nave, o toque simultâneo e o desempenho no Moto G04s.
