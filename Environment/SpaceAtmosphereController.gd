@@ -104,7 +104,7 @@ func _process(delta: float) -> void:
 		env.ambient_light_energy = lerpf(0.42, 0.68, atmo_weight)
 		env.fog_enabled = atmo_weight > 0.005
 		env.fog_light_color = sky_horizon
-		env.fog_density = 0.00235 * atmo_weight
+		env.fog_density = planet.data.fog_density * atmo_weight if is_instance_valid(planet) else 0.0
 		env.fog_sky_affect = 0.0
 		_last_sky_planet = sky_planet
 		_last_sky_weight = atmo_weight

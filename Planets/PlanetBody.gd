@@ -1,7 +1,7 @@
 class_name PlanetBody
 extends StaticBody3D
 ## Spherical procedural planet with cube-sphere geometry, vertex biome coloring,
-## 2-tier distance LOD, Fresnel atmosphere shell, optional ocean sphere,
+## edge-locked regional LOD, Fresnel atmosphere shell, terrain-aligned water,
 ## MultiMesh flora/rock scatter, and local ecosystem spawned on approach.
 
 const CREATURE_SCENE := preload("res://Creatures/AlienCreature.tscn")
@@ -10,15 +10,18 @@ const MONOLITH_SCENE := preload("res://Combat/AncientMonolith.tscn")
 
 const AURELIA_START_DIRECTION := Vector3(0.180171244, 0.960913302, 0.210199785)
 const AURELIA_LANDING := preload("res://Planets/AureliaLanding.gd")
+const LANDSCAPE := preload("res://Planets/PlanetLandscape.gd")
+const MESH_BUILDER := preload("res://Planets/PlanetTerrainMesh.gd")
+const LANDMARK := preload("res://Planets/PlanetLandmark.gd")
+const OCEAN := preload("res://Planets/PlanetOcean.gdshader")
 const AURELIA_TERRAIN := preload("res://Planets/AureliaTerrain.gdshader")
 
+var _landmark: Node3D
 var _landing: Node3D
-var _village_up := Vector3.ZERO
+var landscape: RefCounted
 var data: PlanetData
 var planet_name: String = "Planet"
 
-var _noise: FastNoiseLite
-var _detail_noise: FastNoiseLite
 var _terrain_mesh_inst: Node3D
 var _terrain_building := false
 var _terrain_chunks: Array[MeshInstance3D] = []
@@ -28,50 +31,29 @@ var _sky_obscuration := 0.0
 var _orbital_material: StandardMaterial3D
 var _distant_proxy_inst: MeshInstance3D
 var _terrain_collider: CollisionShape3D
-var _ocean_mesh_inst: MeshInstance3D
+var _water_material: ShaderMaterial
+var _water_chunks: Array[MeshInstance3D] = []
 var _atmosphere_mesh_inst: MeshInstance3D
 
 const SURFACE_LIFE := preload("res://Planets/SurfaceLife.gd")
 var _surface_life: Node3D
-var _moisture := FastNoiseLite.new()
 var _ecosystem_direction := Vector3.ZERO
 var _ecosystem_root: Node3D
 var _ecosystem_active: bool = false
-var _check_timer: float = 0.45
+var _check_timer: float = 0.18
 
 
 func initialize(planet_data: PlanetData) -> void:
 	data = planet_data
 	planet_name = data.planet_name
 	name = planet_name.replace(" ", "_")
-	if is_aurelia():
-		var site := AURELIA_START_DIRECTION
-		var right := Vector3.RIGHT.cross(site).normalized()
-		var offset: Vector2 = AURELIA_LANDING.VILLAGE_CENTER
-		_village_up = (site * (data.radius + 9.0) + right * offset.x + site.cross(right) * offset.y).normalized()
-
-	_noise = FastNoiseLite.new()
-	_noise.seed = data.seed_value
-	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_noise.fractal_octaves = 4
-	_noise.fractal_lacunarity = 2.05
-	_noise.fractal_gain = 0.48
-	_noise.frequency = data.noise_frequency
-
-	_detail_noise = FastNoiseLite.new()
-	_detail_noise.seed = data.seed_value + 777
-	_detail_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_detail_noise.fractal_octaves = 2
-	_detail_noise.frequency = data.noise_frequency * 4.5
-
-	_moisture.seed = data.seed_value + 81
-	_moisture.frequency = 0.008
-	_moisture.fractal_octaves = 2
+	landscape = LANDSCAPE.new(data)
+	_landmark = LANDMARK.new()
+	_landmark.choose(self)
+	add_child(_landmark)
 	_build_distant_proxy()
 	if is_aurelia():
 		_build_terrain()
-	if data.has_ocean:
-		_build_ocean()
 	_build_atmosphere_shell()
 	_surface_life = SURFACE_LIFE.new()
 	_surface_life.name = "SurfaceLife"
@@ -91,7 +73,7 @@ func initialize(planet_data: PlanetData) -> void:
 
 func _process(delta: float) -> void:
 	_check_timer += delta
-	if _check_timer < 0.45:
+	if _check_timer < 0.18:
 		return
 	_check_timer = 0.0
 
@@ -111,14 +93,26 @@ func _process(delta: float) -> void:
 		_terrain_mesh_inst.visible = near_detail
 		if near_detail:
 			_update_terrain_visibility(direction, altitude)
+		elif dist > atmo_edge + 2400.0 and not is_aurelia():
+			_terrain_mesh_inst.queue_free()
+			_terrain_collider.queue_free()
+			_terrain_mesh_inst = null
+			_terrain_collider = null
+			_terrain_chunks.clear()
+			_chunk_directions.clear()
+			_chunk_extents.clear()
+			_water_chunks.clear()
 	_distant_proxy_inst.visible = _sky_obscuration < 0.97 and not (near_detail and is_instance_valid(_terrain_mesh_inst))
-	if is_instance_valid(_ocean_mesh_inst):
-		_ocean_mesh_inst.visible = near_detail and is_instance_valid(_terrain_mesh_inst)
 
-	var near_surface := altitude < 210.0 and is_instance_valid(_terrain_mesh_inst)
-	_surface_life.visible = near_surface
-	if near_surface:
-		_surface_life.update_tiles(direction)
+	var clearance := dist - get_surface_radius_at_dir(direction) if near_detail else 600.0
+	var near_surface := clearance < 210.0 and is_instance_valid(_terrain_mesh_inst)
+	var velocity := (focus as CharacterBody3D).velocity
+	if is_instance_valid(_terrain_collider):
+		_surface_life.update_tiles(direction, velocity, clearance)
+		if _landmark.get_child_count() == 0 and _landmark.direction != Vector3.ZERO and clearance < 430.0:
+			_place_landmark()
+	else:
+		_surface_life.update_tiles(direction, Vector3.ZERO, 600.0)
 	var exploring: bool = near_surface and (GameState.current_mode == GameState.ControlMode.ON_FOOT or GameState.ship_node.is_landed)
 	if exploring and (not _ecosystem_active or direction.distance_to(_ecosystem_direction) * data.radius > 255.0):
 		_deactivate_ecosystem()
@@ -141,6 +135,19 @@ func set_sky_obscuration(weight: float) -> void:
 		_distant_proxy_inst.hide()
 
 
+func is_landmark_area(direction: Vector3) -> bool:
+	return _landmark.direction.distance_to(direction) * data.radius < 22.0
+
+
+func _place_landmark() -> void:
+	var direction: Vector3 = _landmark.direction
+	var sample := global_position + direction * get_surface_radius_at_dir(direction)
+	var ray := PhysicsRayQueryParameters3D.create(sample + direction * 65.0, sample - direction * 65.0, 1)
+	var hit := get_world_3d().direct_space_state.intersect_ray(ray)
+	if not hit.is_empty():
+		_landmark.build(self, hit["position"])
+
+
 func is_forest_area(direction: Vector3) -> bool:
 	return is_instance_valid(_landing) and _landing.is_forest_direction(direction)
 
@@ -154,25 +161,7 @@ func is_aurelia() -> bool:
 
 
 func get_surface_radius_at_dir(unit_dir: Vector3) -> float:
-	var dir: Vector3 = unit_dir.normalized()
-	var sample_pos: Vector3 = dir * data.radius
-	var n1: float = _noise.get_noise_3dv(sample_pos)
-	var n2: float = _detail_noise.get_noise_3dv(sample_pos) * 0.22
-	var h: float = (n1 + n2) * data.terrain_amplitude
-	if h < 0.0:
-		h *= 0.65
-	if is_aurelia():
-		var site := AURELIA_START_DIRECTION
-		var site_distance := site.distance_to(dir) * data.radius
-		var shelf := 9.0 + n1 * 3.2 + n2 * 9.0
-		var ridge_distance := (site + Vector3(0.055, -0.013, 0.032)).normalized().distance_to(dir) * data.radius
-		h += (1.0 - smoothstep(7.0, 64.0, ridge_distance)) * 26.0
-		h = lerpf(shelf, h, smoothstep(45.0, 140.0, site_distance))
-		var village_distance := dir.distance_to(_village_up) * data.radius
-		if village_distance < 77.0:
-			var plaza := (data.radius + 9.0) / dir.dot(_village_up) - data.radius
-			h = lerpf(plaza, h, smoothstep(47.0, 77.0, village_distance))
-	return data.radius + h
+	return data.radius + landscape.height(unit_dir.normalized())
 
 
 func get_surface_point_and_normal(world_pos: Vector3) -> Dictionary:
@@ -188,7 +177,7 @@ func get_surface_point_and_normal(world_pos: Vector3) -> Dictionary:
 	tangent = tangent.normalized()
 	var bitangent: Vector3 = local_dir.cross(tangent).normalized()
 
-	var eps: float = 0.015
+	var eps: float = 0.0035
 	var d1: Vector3 = (local_dir + tangent * eps).normalized()
 	var d2: Vector3 = (local_dir + bitangent * eps).normalized()
 	var p0: Vector3 = local_dir * r
@@ -226,8 +215,8 @@ func get_sky_colors() -> Dictionary:
 
 func _build_terrain(staggered := false) -> void:
 	_terrain_building = true
-	var resolution := 53 if is_aurelia() else 45
-	var mesh: ArrayMesh = await _make_surface_mesh(resolution, false, staggered)
+	var resolution := 65
+	var mesh: ArrayMesh = await MESH_BUILDER.new().build(self, resolution, false, staggered)
 	var material := ShaderMaterial.new()
 	material.shader = AURELIA_TERRAIN
 	var grain := NoiseTexture2D.new()
@@ -262,11 +251,18 @@ func _build_terrain_chunks(source: Array, resolution: int, material: Material) -
 	var vertices: PackedVector3Array = source[Mesh.ARRAY_VERTEX]
 	var normals: PackedVector3Array = source[Mesh.ARRAY_NORMAL]
 	var colors: PackedColorArray = source[Mesh.ARRAY_COLOR]
-	var half_face := (resolution - 1) >> 1
-	var stride := half_face + 1
+	var patch_size := (resolution - 1) >> 2
+	var stride := patch_size + 1
+	var coarse := _edge_preserving_lod(patch_size)
+	if data.has_ocean:
+		_water_material = ShaderMaterial.new()
+		_water_material.shader = OCEAN
+		_water_material.set_shader_parameter("deep", data.ocean_color.darkened(0.33))
+		_water_material.set_shader_parameter("shallows", data.ocean_color.lightened(0.30))
+		_water_material.set_shader_parameter("ice", data.landscape == PlanetData.Landscape.GLACIUS)
 	var grid := PackedInt32Array()
-	for y in range(half_face):
-		for x in range(half_face):
+	for y in range(patch_size):
+		for x in range(patch_size):
 			var index := y * stride + x
 			grid.append(index)
 			grid.append(index + stride)
@@ -275,10 +271,10 @@ func _build_terrain_chunks(source: Array, resolution: int, material: Material) -
 			grid.append(index + stride)
 			grid.append(index + stride + 1)
 	for face in range(6):
-		for row in range(2):
-			for col in range(2):
-				var start := face * resolution * resolution + row * half_face * resolution + col * half_face
-				var center := vertices[start + (half_face >> 1) * (resolution + 1)].normalized()
+		for row in range(4):
+			for col in range(4):
+				var start := face * resolution * resolution + row * patch_size * resolution + col * patch_size
+				var center := vertices[start + (patch_size >> 1) * (resolution + 1)].normalized()
 				var extent := 0.0
 				var points := PackedVector3Array()
 				var gradients := PackedVector3Array()
@@ -288,7 +284,7 @@ func _build_terrain_chunks(source: Array, resolution: int, material: Material) -
 					points.append_array(vertices.slice(first, first + stride))
 					gradients.append_array(normals.slice(first, first + stride))
 					tints.append_array(colors.slice(first, first + stride))
-				for corner: int in [0, half_face, half_face * stride, points.size() - 1]:
+				for corner: int in [0, patch_size, patch_size * stride, points.size() - 1]:
 					extent = maxf(extent, center.angle_to(points[corner].normalized()))
 				var arrays := []
 				arrays.resize(Mesh.ARRAY_MAX)
@@ -297,7 +293,7 @@ func _build_terrain_chunks(source: Array, resolution: int, material: Material) -
 				arrays[Mesh.ARRAY_COLOR] = tints
 				arrays[Mesh.ARRAY_INDEX] = grid
 				var mesh := ArrayMesh.new()
-				mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+				mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {7.0: coarse})
 				mesh.surface_set_material(0, material)
 				var tile := MeshInstance3D.new()
 				tile.mesh = mesh
@@ -306,6 +302,7 @@ func _build_terrain_chunks(source: Array, resolution: int, material: Material) -
 				_terrain_chunks.append(tile)
 				_chunk_directions.append(center)
 				_chunk_extents.append(extent)
+				_water_chunks.append(_make_water_patch(points, grid) if data.has_ocean else null)
 
 
 func _update_terrain_visibility(direction: Vector3, altitude: float) -> void:
@@ -314,48 +311,66 @@ func _update_terrain_visibility(direction: Vector3, altitude: float) -> void:
 	var ridge_margin := acos(data.radius / (data.radius + data.terrain_amplitude)) + 0.045
 	for index in range(_terrain_chunks.size()):
 		var angle := horizon + ridge_margin + _chunk_extents[index]
-		_terrain_chunks[index].visible = direction.dot(_chunk_directions[index]) >= cos(angle)
+		var patch := _terrain_chunks[index]
+		var dot_product := direction.dot(_chunk_directions[index])
+		patch.visible = dot_product >= cos(angle)
+		patch.lod_bias = 48.0 if altitude < 140.0 and dot_product > cos(_chunk_extents[index] + 0.115) else 0.7
+		if is_instance_valid(_water_chunks[index]):
+			_water_chunks[index].visible = patch.visible
 
 
-func _make_surface_mesh(resolution: int, orbital := false, staggered := false) -> ArrayMesh:
+func _edge_preserving_lod(size: int) -> PackedInt32Array:
+	var indices := PackedInt32Array()
+	var stride := size + 1
+	for y in range(0, size, 2):
+		for x in range(0, size, 2):
+			var a := y * stride + x
+			var b := a + 2 * stride
+			var c := b + 2
+			var d := a + 2
+			if x > 0 and y > 0 and x + 2 < size and y + 2 < size:
+				indices.append_array(PackedInt32Array([a, b, d, d, b, c]))
+				continue
+			var ring := PackedInt32Array([a])
+			if x == 0:
+				ring.append(a + stride)
+			ring.append(b)
+			if y + 2 == size:
+				ring.append(b + 1)
+			ring.append(c)
+			if x + 2 == size:
+				ring.append(d + stride)
+			ring.append(d)
+			if y == 0:
+				ring.append(a + 1)
+			var center := a + stride + 1
+			for i in range(ring.size()):
+				indices.append_array(PackedInt32Array([center, ring[i], ring[(i + 1) % ring.size()]]))
+	return indices
+
+
+func _make_water_patch(points: PackedVector3Array, terrain_indices: PackedInt32Array) -> MeshInstance3D:
+	var surface_radius := data.radius + data.ocean_level_offset
+	var depths := PackedFloat32Array()
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
+	for point in points:
+		var depth := surface_radius - point.length()
+		var up := point.normalized()
+		depths.append(depth)
+		vertices.append(up * surface_radius)
+		normals.append(up)
+		colors.append(Color(clampf((depth + 32.0) / 105.0, 0.0, 1.0), 0, 0))
 	var indices := PackedInt32Array()
-	var face_size := resolution * resolution
-	vertices.resize(face_size * 6)
-	normals.resize(vertices.size())
-	colors.resize(vertices.size())
-	var faces: Array[Vector3] = [Vector3.UP, Vector3.DOWN, Vector3.LEFT, Vector3.RIGHT, Vector3.FORWARD, Vector3.BACK]
-	for face_index in range(faces.size()):
-		if staggered:
-			await get_tree().process_frame
-		var normal := faces[face_index]
-		var horizontal := Vector3(normal.y, normal.z, normal.x)
-		var vertical := normal.cross(horizontal)
-		var base := face_index * face_size
-		for y in range(resolution):
-			for x in range(resolution):
-				var cube := normal + horizontal * (2.0 * x / (resolution - 1) - 1.0) + vertical * (2.0 * y / (resolution - 1) - 1.0)
-				var direction := _cube_to_sphere(cube)
-				var radius := get_surface_radius_at_dir(direction)
-				var index := base + y * resolution + x
-				var display_radius := maxf(radius, data.radius + data.ocean_level_offset) if orbital and data.has_ocean else radius
-				vertices[index] = direction * display_radius
-				colors[index] = _evaluate_biome_color(direction, radius - data.radius, orbital)
-		for y in range(resolution):
-			for x in range(resolution):
-				var index := base + y * resolution + x
-				var tangent := vertices[base + y * resolution + mini(x + 1, resolution - 1)] - vertices[base + y * resolution + maxi(x - 1, 0)]
-				var bitangent := vertices[base + mini(y + 1, resolution - 1) * resolution + x] - vertices[base + maxi(y - 1, 0) * resolution + x]
-				normals[index] = tangent.cross(bitangent).normalized().lerp(vertices[index].normalized(), 0.22).normalized()
-				if x < resolution - 1 and y < resolution - 1:
-					indices.append(index)
-					indices.append(index + resolution)
-					indices.append(index + 1)
-					indices.append(index + 1)
-					indices.append(index + resolution)
-					indices.append(index + resolution + 1)
+	for i in range(0, terrain_indices.size(), 3):
+		var a := terrain_indices[i]
+		var b := terrain_indices[i + 1]
+		var c := terrain_indices[i + 2]
+		if maxf(depths[a], maxf(depths[b], depths[c])) > 0.0:
+			indices.append_array(PackedInt32Array([a, b, c]))
+	if indices.is_empty():
+		return null
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
@@ -364,11 +379,16 @@ func _make_surface_mesh(resolution: int, orbital := false, staggered := false) -
 	arrays[Mesh.ARRAY_INDEX] = indices
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	return mesh
+	mesh.surface_set_material(0, _water_material)
+	var patch := MeshInstance3D.new()
+	patch.mesh = mesh
+	patch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_terrain_mesh_inst.add_child(patch)
+	return patch
 
 
 func _build_distant_proxy() -> void:
-	var mesh: ArrayMesh = await _make_surface_mesh(13, true)
+	var mesh: ArrayMesh = await MESH_BUILDER.new().build(self, 17, true)
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true
 	mat.roughness = 0.92
@@ -382,52 +402,8 @@ func _build_distant_proxy() -> void:
 	add_child(_distant_proxy_inst)
 
 
-func _cube_to_sphere(p: Vector3) -> Vector3:
-	var x2: float = p.x * p.x
-	var y2: float = p.y * p.y
-	var z2: float = p.z * p.z
-	var sx: float = p.x * sqrt(maxf(0.0, 1.0 - y2 * 0.5 - z2 * 0.5 + (y2 * z2) / 3.0))
-	var sy: float = p.y * sqrt(maxf(0.0, 1.0 - z2 * 0.5 - x2 * 0.5 + (z2 * x2) / 3.0))
-	var sz: float = p.z * sqrt(maxf(0.0, 1.0 - x2 * 0.5 - y2 * 0.5 + (x2 * y2) / 3.0))
-	return Vector3(sx, sy, sz).normalized()
-
-
 func get_biome(direction: Vector3, height: float) -> int:
-	if height > data.terrain_amplitude * 0.23:
-		return 2
-	return 1 if _moisture.get_noise_3dv(direction * data.radius) > -0.12 else 0
-
-
-func _evaluate_biome_color(direction: Vector3, height: float, orbital: bool) -> Color:
-	if data.has_ocean and height < data.ocean_level_offset + 2.4:
-		return data.ocean_color if orbital and height < data.ocean_level_offset else data.shore_color
-	var moisture := _moisture.get_noise_3dv(direction * data.radius)
-	var woodland := data.lowland_color.lerp(data.tree_canopy_color.darkened(0.17), 0.62)
-	var lowlands := data.lowland_color.lerp(woodland, smoothstep(-0.30, 0.35, moisture))
-	var hills := lowlands.lerp(data.highland_color, smoothstep(0.13, 0.39, height / data.terrain_amplitude))
-	return hills.lerp(data.peak_color, smoothstep(0.29, 0.67, height / data.terrain_amplitude))
-
-
-func _build_ocean() -> void:
-	var sphere := SphereMesh.new()
-	sphere.radius = data.radius + data.ocean_level_offset
-	sphere.height = sphere.radius * 2.0
-	sphere.radial_segments = 72
-	sphere.rings = 36
-
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = data.ocean_color
-	if data.ocean_color.a < 0.99:
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.roughness = 0.18
-	mat.metallic = 0.25
-	sphere.material = mat
-
-	_ocean_mesh_inst = MeshInstance3D.new()
-	_ocean_mesh_inst.name = "OceanSphere"
-	_ocean_mesh_inst.mesh = sphere
-	_ocean_mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(_ocean_mesh_inst)
+	return landscape.biome(direction, height)
 
 
 func _build_atmosphere_shell() -> void:

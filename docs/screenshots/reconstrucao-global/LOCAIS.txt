@@ -1,0 +1,64 @@
+Godot 4.3 Compatibility | captura real | perfil Econômico | WebP 960 px
+Altitude relativa à malha física quando disponível. Direção radial no referencial local de cada planeta.
+A guinada usa a projeção do eixo -Z no plano tangente. Guinada e inclinação em radianos.
+As vistas 01–16 reutilizam a mesma direção, altura relativa e orientação. A distância ao centro varia com o novo relevo.
+
+01-vila-e-bosque.webp | antes/ e depois/ | Aurelia Prime | seed 1042
+  (0.2287854, 0.9478559, 0.2218698) | 5 m | guinada 0.55000 | inclinação -0.08 | Econômico
+  Área construída preservada, com vista pelo lado do bosque.
+02-floresta-distante.webp | antes/ e depois/ | Aurelia Prime | seed 1042
+  (0.0994598, -0.4439903, 0.8904944) | 2.9 m | guinada 1.05000 | inclinação -0.12 | Econômico
+  Posição comum escolhida no bosque antigo. O relevo novo mostra uma encosta menos arborizada no enquadramento.
+03-campo-distante.webp | antes/ e depois/ | Aurelia Prime | seed 1042
+  (0.6368544, 0.4261819, 0.6424838) | 2.4 m | guinada 2.80000 | inclinação -0.10 | Econômico
+  O campo antigo passa para uma faixa arenosa de baixa altitude no relevo novo.
+04-montanhas.webp | antes/ e depois/ | Aurelia Prime | seed 1042
+  (0.6357562, 0.5370476, 0.5544312) | 13 m | guinada 0.40000 | inclinação -0.10 | Econômico
+05-costa.webp | antes/ e depois/ | Aurelia Prime | seed 1042
+  (0.4279777, 0.7732997, -0.4678063) | 3.8 m | guinada 0.90000 | inclinação -0.10 | Econômico
+  A costa antiga muda de lugar. A vista 18 mostra a margem gerada após a reforma.
+06-regiao-rochosa.webp | antes/ e depois/ | Aurelia Prime | seed 1042
+  (0.8636199, -0.2337535, 0.4466767) | 7 m | guinada 2.10000 | inclinação -0.17 | Econômico
+07-panorama.webp | antes/ e depois/ | Aurelia Prime | seed 1042
+  (0.2073647, 0.9486197, 0.2389991) | 92 m | guinada 2.70000 | inclinação -0.51 | Econômico
+  Visibilidade reduzida pela névoa de baixa altitude.
+08-orbita.webp | antes/ e depois/ | Aurelia Prime | seed 1042
+  (0.3676001, 0.7053946, 0.6060433) | 4450 m | guinada 0.00000 | inclinação -1.56 | Econômico
+  O disco é visto da órbita distante; a câmera não usa o enquadramento da nave.
+09-pyros-superficie.webp | antes/ e depois/ | Pyros V | seed 2089
+  (0.2477902, -0.4113166, 0.8771651) | 2.7 m | guinada 0.75000 | inclinação -0.09 | Econômico
+10-pyros-panorama.webp | antes/ e depois/ | Pyros V | seed 2089
+  (0.2477902, -0.4113166, 0.8771651) | 105 m | guinada 2.60000 | inclinação -0.36 | Econômico
+11-glacius-superficie.webp | antes/ e depois/ | Glacius IX | seed 3371
+  (0.0616187, 0.7010359, 0.7104589) | 2.7 m | guinada 0.75000 | inclinação -0.09 | Econômico
+12-glacius-panorama.webp | antes/ e depois/ | Glacius IX | seed 3371
+  (0.0616187, 0.7010359, 0.7104589) | 105 m | guinada 2.60000 | inclinação -0.36 | Econômico
+13-veridian-superficie.webp | antes/ e depois/ | Veridian Mire | seed 4912
+  (0.3348997, 0.7939540, -0.5074242) | 2.7 m | guinada 0.75000 | inclinação -0.09 | Econômico
+  A posição comparável fica próxima de uma faixa úmida aberta. A vista 26 mostra o interior da mata.
+14-veridian-panorama.webp | antes/ e depois/ | Veridian Mire | seed 4912
+  (0.3348997, 0.7939540, -0.5074242) | 105 m | guinada 2.60000 | inclinação -0.36 | Econômico
+15-dusthaven-superficie.webp | antes/ e depois/ | Dusthaven | seed 5507
+  (0.7005450, -0.3288476, 0.6333215) | 2.7 m | guinada 0.75000 | inclinação -0.09 | Econômico
+16-dusthaven-panorama.webp | antes/ e depois/ | Dusthaven | seed 5507
+  (0.7005450, -0.3288476, 0.6333215) | 105 m | guinada 2.60000 | inclinação -0.36 | Econômico
+17-copas-e-sub-bosque.webp | depois/ | Aurelia Prime | seed 1042
+  (0.1065281, -0.4457462, 0.8887981) | 3.6 m | guinada 0.10000 | inclinação 0.08 | Econômico
+18-litoral-em-voo-baixo.webp | depois/ | Aurelia Prime | seed 1042
+  (0.0703068, 0.8379295, 0.5412310) | 26 m | guinada 0.84000 | inclinação -0.34 | Econômico
+19-voo-alto-transicao-de-biomas.webp | depois/ | Aurelia Prime | seed 1042
+  (-0.2747334, 0.8934292, -0.3553954) | 184 m | guinada 2.50000 | inclinação -0.49 | Econômico
+20-lapa-dos-ventos.webp | depois/ | Aurelia Prime | seed 1042
+  (0.8582191, -0.3865795, 0.3376630) | 4.5 m | guinada -2.98566 | inclinação -0.14 | Econômico
+21-dentes-de-basalto.webp | depois/ | Pyros V | seed 2089
+  (0.4479882, 0.1817078, 0.8753793) | 4.5 m | guinada 2.79790 | inclinação -0.14 | Econômico
+22-agulhas-de-geada.webp | depois/ | Glacius IX | seed 3371
+  (-0.3081959, 0.2236549, 0.9246588) | 4.5 m | guinada 0.58844 | inclinação -0.14 | Econômico
+23-raizes-da-varzea.webp | depois/ | Veridian Mire | seed 4912
+  (-0.6177409, 0.6829861, 0.3897772) | 4.5 m | guinada 0.39502 | inclinação -0.14 | Econômico
+24-janela-das-mesetas.webp | depois/ | Dusthaven | seed 5507
+  (-0.6667782, 0.0199036, 0.7449904) | 4.5 m | guinada 0.02194 | inclinação -0.14 | Econômico
+25-vale-do-trevo.webp | depois/ | Aurelia Prime | seed 1042
+  (0.2327804, 0.9454280, 0.2279896) | 10 m | guinada -1.19655 | inclinação -0.36 | Econômico
+26-mata-umida.webp | depois/ | Veridian Mire | seed 4912
+  (-0.7618319, 0.5891393, 0.2693082) | 5 m | guinada 0.25000 | inclinação -0.12 | Econômico

@@ -1,0 +1,242 @@
+[
+	{
+		"altitude": 5,
+		"direction": [
+			0.228785440325737,
+			0.947855949401855,
+			0.22186978161335
+		],
+		"index": 0,
+		"label": "01-vila-e-bosque",
+		"pitch": -0.08,
+		"planet": "Aurelia Prime",
+		"profile": "Econômico",
+		"seed": 1042,
+		"yaw": 0.55
+	},
+	{
+		"altitude": 2.9,
+		"direction": [
+			0.0994597598910332,
+			-0.44399034976959,
+			0.890494406223297
+		],
+		"index": 0,
+		"label": "02-floresta-distante",
+		"pitch": -0.12,
+		"planet": "Aurelia Prime",
+		"profile": "Econômico",
+		"seed": 1042,
+		"yaw": 1.05
+	},
+	{
+		"altitude": 2.4,
+		"direction": [
+			0.636854410171509,
+			0.426181852817535,
+			0.642483830451965
+		],
+		"index": 0,
+		"label": "03-campo-distante",
+		"pitch": -0.1,
+		"planet": "Aurelia Prime",
+		"profile": "Econômico",
+		"seed": 1042,
+		"yaw": 2.8
+	},
+	{
+		"altitude": 13,
+		"direction": [
+			0.635756194591522,
+			0.537047564983368,
+			0.554431200027466
+		],
+		"index": 0,
+		"label": "04-montanhas",
+		"pitch": -0.1,
+		"planet": "Aurelia Prime",
+		"profile": "Econômico",
+		"seed": 1042,
+		"yaw": 0.4
+	},
+	{
+		"altitude": 3.8,
+		"direction": [
+			0.427977681159973,
+			0.773299694061279,
+			-0.46780630946159
+		],
+		"index": 0,
+		"label": "05-costa",
+		"pitch": -0.1,
+		"planet": "Aurelia Prime",
+		"profile": "Econômico",
+		"seed": 1042,
+		"yaw": 0.9
+	},
+	{
+		"altitude": 7,
+		"direction": [
+			0.863619863986969,
+			-0.23375348746777,
+			0.446676671504974
+		],
+		"index": 0,
+		"label": "06-regiao-rochosa",
+		"pitch": -0.17,
+		"planet": "Aurelia Prime",
+		"profile": "Econômico",
+		"seed": 1042,
+		"yaw": 2.1
+	},
+	{
+		"altitude": 92,
+		"direction": [
+			0.207364678382874,
+			0.948619663715363,
+			0.238999113440514
+		],
+		"index": 0,
+		"label": "07-panorama",
+		"pitch": -0.51,
+		"planet": "Aurelia Prime",
+		"profile": "Econômico",
+		"seed": 1042,
+		"yaw": 2.7
+	},
+	{
+		"altitude": 4450,
+		"direction": [
+			0.367600053548813,
+			0.705394625663757,
+			0.606043338775635
+		],
+		"index": 0,
+		"label": "08-orbita",
+		"pitch": -1.56,
+		"planet": "Aurelia Prime",
+		"profile": "Econômico",
+		"seed": 1042,
+		"yaw": 0
+	},
+	{
+		"altitude": 2.7,
+		"direction": [
+			0.24779024720192,
+			-0.41131660342216,
+			0.877165079116821
+		],
+		"index": 1,
+		"label": "09-pyros-superficie",
+		"pitch": -0.09,
+		"planet": "Pyros V",
+		"profile": "Econômico",
+		"seed": 2089,
+		"yaw": 0.75
+	},
+	{
+		"altitude": 105,
+		"direction": [
+			0.24779024720192,
+			-0.41131660342216,
+			0.877165079116821
+		],
+		"index": 1,
+		"label": "10-pyros-panorama",
+		"pitch": -0.36,
+		"planet": "Pyros V",
+		"profile": "Econômico",
+		"seed": 2089,
+		"yaw": 2.6
+	},
+	{
+		"altitude": 2.7,
+		"direction": [
+			0.0616186670958996,
+			0.701035916805267,
+			0.710458874702454
+		],
+		"index": 2,
+		"label": "11-glacius-superficie",
+		"pitch": -0.09,
+		"planet": "Glacius IX",
+		"profile": "Econômico",
+		"seed": 3371,
+		"yaw": 0.75
+	},
+	{
+		"altitude": 105,
+		"direction": [
+			0.0616186670958996,
+			0.701035916805267,
+			0.710458874702454
+		],
+		"index": 2,
+		"label": "12-glacius-panorama",
+		"pitch": -0.36,
+		"planet": "Glacius IX",
+		"profile": "Econômico",
+		"seed": 3371,
+		"yaw": 2.6
+	},
+	{
+		"altitude": 2.7,
+		"direction": [
+			0.334899663925171,
+			0.793953955173492,
+			-0.50742423534393
+		],
+		"index": 3,
+		"label": "13-veridian-superficie",
+		"pitch": -0.09,
+		"planet": "Veridian Mire",
+		"profile": "Econômico",
+		"seed": 4912,
+		"yaw": 0.75
+	},
+	{
+		"altitude": 105,
+		"direction": [
+			0.334899663925171,
+			0.793953955173492,
+			-0.50742423534393
+		],
+		"index": 3,
+		"label": "14-veridian-panorama",
+		"pitch": -0.36,
+		"planet": "Veridian Mire",
+		"profile": "Econômico",
+		"seed": 4912,
+		"yaw": 2.6
+	},
+	{
+		"altitude": 2.7,
+		"direction": [
+			0.700544953346252,
+			-0.32884755730629,
+			0.633321464061737
+		],
+		"index": 4,
+		"label": "15-dusthaven-superficie",
+		"pitch": -0.09,
+		"planet": "Dusthaven",
+		"profile": "Econômico",
+		"seed": 5507,
+		"yaw": 0.75
+	},
+	{
+		"altitude": 105,
+		"direction": [
+			0.700544953346252,
+			-0.32884755730629,
+			0.633321464061737
+		],
+		"index": 4,
+		"label": "16-dusthaven-panorama",
+		"pitch": -0.36,
+		"planet": "Dusthaven",
+		"profile": "Econômico",
+		"seed": 5507,
+		"yaw": 2.6
+	}
+]

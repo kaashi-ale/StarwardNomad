@@ -26,3 +26,9 @@ Alteração: o Bosque do Arco usa árvores, arbusto, rocha, samambaia e flor do 
 Objetivo: testar uma direção visual coerente em uma área pequena, com versões compactas para Econômico e Baixo.
 Capturas: docs/screenshots/bosque-quaternius/
 Android: aparência e desempenho no Moto G04s ainda precisam de validação.
+
+2026-11-19 | Reconstrução ambiental global
+Alteração — relevo, biomas, águas, vegetação regional e marcos visitáveis nos cinco planetas.
+Objetivo — dar identidade a cada mundo e preparar setores na direção do voo, preservando a vila e a nave.
+Capturas — docs/screenshots/reconstrucao-global/
+Auditoria — docs/ENVIRONMENT_AUDIT.md. Desempenho e toque físico pendentes no Moto G04s.
