@@ -3,15 +3,15 @@ extends StaticBody3D
 
 const MODELS := preload("res://Planets/AureliaForestMeshes.gd")
 const TREES := [
-	"res://Assets/Environment/Trees/oak-rounded.gltf",
-	"res://Assets/Environment/Trees/oak-spreading.gltf",
-	"res://Assets/Environment/Trees/tree-tall.gltf",
+	"res://Assets/Environment/Trees/quaternius-broadleaf.gltf",
+	"res://Assets/Environment/Trees/quaternius-grove-tree.gltf",
+	"res://Assets/Environment/Trees/quaternius-woodland-pine.gltf",
 ]
-const TRUNK_RADII := [0.77, 0.24, 0.41]
-const SHRUB := "res://Assets/Environment/Shrubs/forest-shrub.gltf"
+const TRUNK_RADII := [0.38, 0.40, 0.36]
+const SHRUB := "res://Assets/Environment/Shrubs/quaternius-leaf-bush.gltf"
 const FERN := "res://Assets/Environment/Plants/woodland-fern.gltf"
 const WILDFLOWER := "res://Assets/Environment/Flowers/trail-wildflower.gltf"
-const STONE := "res://Assets/Environment/Rocks/weathered-stone.gltf"
+const STONE := "res://Assets/Environment/Rocks/quaternius-mossy-rock.gltf"
 const CENTER := Vector2(12.0, 66.0)
 const EXTENT := Vector2(69.0, 77.0)
 const ARCH := Vector2(25.0, 61.0)
@@ -23,9 +23,12 @@ var _landing: Node3D
 var _planet: Node3D
 var _ground: PhysicsDirectSpaceState3D
 var _rng := RandomNumberGenerator.new()
-var _cover: Array[MultiMesh] = []
+var _cover: Array[MultiMeshInstance3D] = []
 var _canopy: Array[MultiMeshInstance3D] = []
 var _stone: Mesh
+var _tree_variants: Array[Array] = []
+var _shrub_variants: Array[Mesh] = []
+var _shrub_batch: MultiMeshInstance3D
 
 
 static func contains_offset(offset: Vector2) -> bool:
@@ -87,9 +90,8 @@ func _build_canopy() -> void:
 				if added == 5:
 					break
 
-	var models: Array[Mesh] = []
 	for path: String in TREES:
-		models.append(_import_mesh(path))
+		_tree_variants.append(_import_mesh_variants(path))
 	for section in range(2):
 		for variant in range(3):
 			var transforms: Array[Transform3D] = []
@@ -106,8 +108,7 @@ func _build_canopy() -> void:
 				trunk.height = 4.35 * size
 				_add_collision(trunk, ground.translated_local(Vector3.UP * (trunk.height * 0.5 - 0.12)))
 			var batch_name := "Canopy%d_%d" % [section, variant]
-			_batch(batch_name, models[variant], transforms)
-			_canopy.append(get_node(batch_name) as MultiMeshInstance3D)
+			_canopy.append(_batch(batch_name, _tree_variants[variant][_mesh_profile(QualityManager.current_preset)], transforms))
 
 
 func _import_mesh(path: String) -> Mesh:
@@ -120,6 +121,18 @@ func _import_mesh(path: String) -> Mesh:
 	var mesh := instance.mesh
 	model.free()
 	return mesh
+
+
+func _import_mesh_variants(path: String) -> Array[Mesh]:
+	var original := _import_mesh(path)
+	var compact := load(path.get_basename() + "-compact.res") as ArrayMesh
+	for surface in range(compact.get_surface_count()):
+		compact.surface_set_material(surface, original.surface_get_material(surface))
+	return [original, compact]
+
+
+func _mesh_profile(preset: int) -> int:
+	return 1 if preset == QualityManager.Preset.ECONOMY or preset == QualityManager.Preset.LOW else 0
 
 
 func _build_understory() -> void:
@@ -158,7 +171,9 @@ func _build_understory() -> void:
 				ferns.append(_scaled_pose(offset, _rng.randf_range(0.78, 1.45)))
 			else:
 				stones.append(_scaled_pose(offset, _rng.randf_range(0.35, 0.77)))
-	_cover.append(_batch("Understory", _import_mesh(SHRUB), shrubs))
+	_shrub_variants = _import_mesh_variants(SHRUB)
+	_shrub_batch = _batch("Understory", _shrub_variants[_mesh_profile(QualityManager.current_preset)], shrubs)
+	_cover.append(_shrub_batch)
 	_cover.append(_batch("FernBanks", _import_mesh(FERN), ferns))
 	_cover.append(_batch("Wildflowers", _import_mesh(WILDFLOWER), blossoms))
 	_cover.append(_batch("LooseStone", _stone, stones))
@@ -215,7 +230,7 @@ func _add_collision(shape: Shape3D, placement: Transform3D) -> void:
 	collider.transform = placement
 
 
-func _batch(label: String, mesh: Mesh, transforms: Array[Transform3D]) -> MultiMesh:
+func _batch(label: String, mesh: Mesh, transforms: Array[Transform3D]) -> MultiMeshInstance3D:
 	var instances := MultiMesh.new()
 	instances.transform_format = MultiMesh.TRANSFORM_3D
 	instances.use_colors = true
@@ -238,16 +253,25 @@ func _batch(label: String, mesh: Mesh, transforms: Array[Transform3D]) -> MultiM
 	display.visibility_range_end = 126.0
 	display.visibility_range_end_margin = 12.0
 	add_child(display)
-	return instances
+	return display
 
 
 func _apply_quality(preset: int) -> void:
-	for batch: MultiMeshInstance3D in _canopy:
-		batch.lod_bias = 0.70 if preset == QualityManager.Preset.ECONOMY else 1.0
+	var economy := preset == QualityManager.Preset.ECONOMY
+	var mesh_profile := _mesh_profile(preset)
+	for index in range(_canopy.size()):
+		var batch := _canopy[index]
+		batch.multimesh.mesh = _tree_variants[index % TREES.size()][mesh_profile]
+		batch.lod_bias = 0.42 if economy else 0.80
+		batch.visibility_range_end = 110.0 if economy else 126.0
+	_shrub_batch.multimesh.mesh = _shrub_variants[mesh_profile]
 	var visible_fraction := 1.0
 	if preset == QualityManager.Preset.ECONOMY:
 		visible_fraction = 0.44
 	elif preset == QualityManager.Preset.LOW:
 		visible_fraction = 0.65
-	for batch: MultiMesh in _cover:
-		batch.visible_instance_count = roundi(batch.instance_count * visible_fraction)
+	for batch: MultiMeshInstance3D in _cover:
+		batch.lod_bias = 0.55 if economy else 0.85
+		batch.visibility_range_end = 86.0 if economy else 108.0
+		var instances := batch.multimesh
+		instances.visible_instance_count = roundi(instances.instance_count * visible_fraction)

@@ -20,3 +20,9 @@ Alteração: três árvores, arbusto e rocha do KayKit, mais samambaia e flor da
 Objetivo: usar modelos texturizados CC0 com escala adaptada, atlas compartilhados e LOD no perfil Econômico.
 Capturas: docs/screenshots/modelos-do-bosque/
 Android: teste de aparência e desempenho no Moto G04s pendente.
+
+2026-11-19 | Quaternius como referência de Aurelia Prime
+Alteração: o Bosque do Arco usa árvores, arbusto, rocha, samambaia e flor do MegaKit, com materiais do pacote. KayKit fica no catálogo auxiliar.
+Objetivo: testar uma direção visual coerente em uma área pequena, com versões compactas para Econômico e Baixo.
+Capturas: docs/screenshots/bosque-quaternius/
+Android: aparência e desempenho no Moto G04s ainda precisam de validação.
