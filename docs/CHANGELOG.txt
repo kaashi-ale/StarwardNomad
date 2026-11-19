@@ -8,3 +8,9 @@ Alteração: bosque ampliado, trilha sob o arco com musgo e vila com casas refin
 Objetivo: ligar a nave ao vilarejo a pé, com clareiras e espaço para pousar.
 Capturas: docs/screenshots/bosque-e-vale-do-trevo/
 Android: falta validar o percurso, a chamada da nave, o toque simultâneo e o desempenho no Moto G04s.
+
+2026-11-19 | Pesquisa da biblioteca ambiental
+Alteração: inventário com licenças e fontes oficiais de KayKit, Quaternius e Kenney.
+Objetivo: preparar a seleção de modelos estilizados para Aurelia Prime.
+Downloads: KayKit e Quaternius exigem interação no itch.io. O link oficial da Kenney retornou HTTP 403.
+Capturas: docs/screenshots/bosque-e-vale-do-trevo/ serve de referência. Integração e medição no Moto G04s pendentes.
