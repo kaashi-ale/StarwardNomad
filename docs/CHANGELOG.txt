@@ -32,3 +32,8 @@ Alteração — relevo, biomas, águas, vegetação regional e marcos visitávei
 Objetivo — dar identidade a cada mundo e preparar setores na direção do voo, preservando a vila e a nave.
 Capturas — docs/screenshots/reconstrucao-global/
 Auditoria — docs/ENVIRONMENT_AUDIT.md. Desempenho e toque físico pendentes no Moto G04s.
+
+2026-11-19 | Estabilidade da vegetação em voo
+Setores fixos na malha do planeta, copas em três níveis e pré-carregamento com retenção espacial.
+Objetivo — manter árvores e cobertura rasteira estáveis e a floresta reconhecível à distância.
+Capturas, trajetos e medições — docs/screenshots/estabilidade-vegetacao/

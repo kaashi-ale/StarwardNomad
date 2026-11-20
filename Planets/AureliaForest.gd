@@ -1,6 +1,7 @@
 extends StaticBody3D
 ## A hand-shaped grove along the curved survey trail between the gate and arch.
 
+const PROXY := preload("res://Planets/CanopyProxy.gd")
 const MODELS := preload("res://Planets/AureliaForestMeshes.gd")
 const TREES := [
 	"res://Assets/Environment/Trees/quaternius-broadleaf.gltf",
@@ -28,6 +29,7 @@ var _canopy: Array[MultiMeshInstance3D] = []
 var _stone: Mesh
 var _tree_variants: Array[Array] = []
 var _shrub_variants: Array[Mesh] = []
+var _lod_timer := 0.0
 var _shrub_batch: MultiMeshInstance3D
 
 
@@ -91,7 +93,9 @@ func _build_canopy() -> void:
 					break
 
 	for path: String in TREES:
-		_tree_variants.append(_import_mesh_variants(path))
+		var variants := _import_mesh_variants(path)
+		variants.append(PROXY.build(variants[0], _planet.data.tree_canopy_color.darkened(0.24), path == TREES[2]))
+		_tree_variants.append(variants)
 	for section in range(2):
 		for variant in range(3):
 			var transforms: Array[Transform3D] = []
@@ -259,11 +263,9 @@ func _batch(label: String, mesh: Mesh, transforms: Array[Transform3D]) -> MultiM
 func _apply_quality(preset: int) -> void:
 	var economy := preset == QualityManager.Preset.ECONOMY
 	var mesh_profile := _mesh_profile(preset)
-	for index in range(_canopy.size()):
-		var batch := _canopy[index]
-		batch.multimesh.mesh = _tree_variants[index % TREES.size()][mesh_profile]
-		batch.lod_bias = 0.42 if economy else 0.80
-		batch.visibility_range_end = 110.0 if economy else 126.0
+	for batch in _canopy:
+		batch.visibility_range_end = 0.0
+	_update_canopies()
 	_shrub_batch.multimesh.mesh = _shrub_variants[mesh_profile]
 	var visible_fraction := 1.0
 	if preset == QualityManager.Preset.ECONOMY:
@@ -275,3 +277,25 @@ func _apply_quality(preset: int) -> void:
 		batch.visibility_range_end = 86.0 if economy else 108.0
 		var instances := batch.multimesh
 		instances.visible_instance_count = roundi(instances.instance_count * visible_fraction)
+
+func _process(delta: float) -> void:
+	_lod_timer -= delta
+	if _lod_timer <= 0.0:
+		_lod_timer = 0.24
+		_update_canopies()
+
+
+func _update_canopies() -> void:
+	var camera := get_viewport().get_camera_3d()
+	if camera == null:
+		return
+	var profile := QualityManager.detail_distance_multiplier
+	for index in range(_canopy.size()):
+		var batch := _canopy[index]
+		var distance := camera.global_position.distance_to(batch.global_position)
+		var previous := int(batch.get_meta("lod", 1))
+		var lod := PROXY.lod_at(distance, previous, profile)
+		if not batch.has_meta("lod") or previous != lod:
+			batch.multimesh.mesh = _tree_variants[index % TREES.size()][lod]
+			batch.set_meta("lod", lod)
+		batch.visible = distance < 330.0 + 190.0 * profile + (42.0 if batch.visible else 0.0)

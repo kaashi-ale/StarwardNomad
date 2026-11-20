@@ -23,6 +23,7 @@ var data: PlanetData
 var planet_name: String = "Planet"
 
 var _terrain_mesh_inst: Node3D
+var vegetation_grid: RefCounted
 var _terrain_building := false
 var _terrain_chunks: Array[MeshInstance3D] = []
 var _chunk_directions: Array[Vector3] = []
@@ -97,6 +98,7 @@ func _process(delta: float) -> void:
 			_terrain_mesh_inst.queue_free()
 			_terrain_collider.queue_free()
 			_terrain_mesh_inst = null
+			vegetation_grid = null
 			_terrain_collider = null
 			_terrain_chunks.clear()
 			_chunk_directions.clear()
@@ -104,7 +106,7 @@ func _process(delta: float) -> void:
 			_water_chunks.clear()
 	_distant_proxy_inst.visible = _sky_obscuration < 0.97 and not (near_detail and is_instance_valid(_terrain_mesh_inst))
 
-	var clearance := dist - get_surface_radius_at_dir(direction) if near_detail else 600.0
+	var clearance := dist - get_surface_radius_at_dir(direction) if near_detail else INF
 	var near_surface := clearance < 210.0 and is_instance_valid(_terrain_mesh_inst)
 	var velocity := (focus as CharacterBody3D).velocity
 	if is_instance_valid(_terrain_collider):
@@ -112,7 +114,7 @@ func _process(delta: float) -> void:
 		if _landmark.get_child_count() == 0 and _landmark.direction != Vector3.ZERO and clearance < 430.0:
 			_place_landmark()
 	else:
-		_surface_life.update_tiles(direction, Vector3.ZERO, 600.0)
+		_surface_life.update_tiles(direction, Vector3.ZERO, INF)
 	var exploring: bool = near_surface and (GameState.current_mode == GameState.ControlMode.ON_FOOT or GameState.ship_node.is_landed)
 	if exploring and (not _ecosystem_active or direction.distance_to(_ecosystem_direction) * data.radius > 255.0):
 		_deactivate_ecosystem()
@@ -238,7 +240,9 @@ func _build_terrain(staggered := false) -> void:
 	_terrain_mesh_inst = Node3D.new()
 	_terrain_mesh_inst.name = "TerrainMesh"
 	add_child(_terrain_mesh_inst)
-	_build_terrain_chunks(mesh.surface_get_arrays(0), resolution, material)
+	var arrays := mesh.surface_get_arrays(0)
+	vegetation_grid = preload("res://Planets/VegetationGrid.gd").new(arrays[Mesh.ARRAY_VERTEX], resolution)
+	_build_terrain_chunks(arrays, resolution, material)
 
 	_terrain_collider = CollisionShape3D.new()
 	_terrain_collider.name = "TerrainCollider"

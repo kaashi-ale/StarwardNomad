@@ -1,149 +1,147 @@
 extends Node3D
-## Small, deterministic vegetation tiles around the observer on a cube sphere.
-
-const TILE_SIZE := 78.0
-const PREFETCH_LIMIT := 280.0
+## Stream stable canopy positions separately from the more expensive forest floor.
 const MEADOW_SHADER := preload("res://Planets/MeadowBlades.gdshader")
+const PROXY := preload("res://Planets/CanopyProxy.gd")
 var _planet: Node3D
-var _tiles: Dictionary = {}
-var _tree_mesh: ArrayMesh
-var _grass_mesh: ArrayMesh
-var _pending: Array[Vector3i] = []
-var _clock := 0.0
-var _deadline: Dictionary = {}
+var _tiles := {}
+var _pending: Array = []
+var _detail_queue: Array[Vector3i] = []
 var _models: Array[Mesh] = []
 var _compact: Array[Mesh] = []
 var _alternate_tree: Array[Mesh] = []
+var _tree_mesh: ArrayMesh
+var _grass_mesh: ArrayMesh
+var _proxies := {}
 var _focus := Vector3.ZERO
-var _altitude := 0.0
-var _quality := -1
+var _altitude := INF
+var _far := 0.0
+var _village := Vector3.ZERO
+var _planned_focus := Vector3.ZERO
+var _planned_lead := Vector3.ZERO
+var _planned_height := -INF
+var _planned_range := 0.0
+var _planned_profile := -1
 
 
 func initialize(planet: Node3D) -> void:
 	_planet = planet
+	set_physics_process(false)
 
 
 func update_tiles(direction: Vector3, velocity: Vector3, clearance: float) -> void:
 	_focus = direction
 	_altitude = clearance
-	_pending.clear()
-	var draw_distance := _draw_distance()
-	var descending := velocity.dot(direction) < -6.0
-	if clearance > draw_distance / 0.46 + (105.0 if descending else 28.0):
-		return
+	var profile := QualityManager.detail_distance_multiplier
 	var radius: float = _planet.data.radius
-	var lead := (velocity.slide(direction) * 0.82).limit_length(PREFETCH_LIMIT)
-	var predicted := (direction * radius + lead).normalized()
-	var desired := {}
-	for center: Vector3 in [direction, predicted]:
-		var tangent := center.cross(Vector3.UP if absf(center.y) < 0.9 else Vector3.RIGHT).normalized()
-		var right := tangent.cross(center)
-		for y in range(-2, 3):
-			for x in range(-2, 3):
-				if x * x + y * y > 6:
-					continue
-				var sample := (center * radius + (tangent * x + right * y) * TILE_SIZE).normalized()
-				var key := _tile_key(sample)
-				var sector_center := Vector3(key).normalized()
-				if sector_center.distance_to(center) * radius > draw_distance + TILE_SIZE * 0.35:
-					continue
-				if desired.has(key):
-					continue
-				desired[key] = true
-				_deadline[key] = _clock + 1.25
-				if not _tiles.has(key):
-					_pending.append(key)
-	_pending.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
-		return _priority(a, predicted) > _priority(b, predicted))
-
-
-func _draw_distance() -> float:
-	return 226.0 * QualityManager.detail_distance_multiplier
-
-
-func _priority(key: Vector3i, predicted: Vector3) -> float:
-	var center := Vector3(key).normalized()
-	return maxf(center.dot(_focus), center.dot(predicted) - 0.001)
-
-
-func _tile_key(direction: Vector3) -> Vector3i:
-	var resolution := ceili(_planet.data.radius / TILE_SIZE)
-	var face := _leading_axis(direction)
-	return Vector3i((direction * (resolution / direction.dot(face))).round())
-
-
-func _physics_process(delta: float) -> void:
-	_clock += delta
-	if not _pending.is_empty() and Engine.get_physics_frames() % 3 == 0:
-		var capacity := 30 + int(15.0 * (QualityManager.detail_distance_multiplier - 0.54))
-		if _tiles.size() >= capacity:
-			_evict_unwanted()
-		if _tiles.size() < capacity:
-			var key: Vector3i = _pending.pop_front()
-			_tiles[key] = _plant_tile(key, Vector3(key).normalized())
-	if Engine.get_physics_frames() % 4 != 0:
+	var speed := velocity.slide(direction).length()
+	_far = 230.0 + 190.0 * profile + minf(speed * 0.46, 62.0) + clampf(clearance * 0.23, 0, 96)
+	var airborne_distance := maxf(clearance, 0.0) * 0.55
+	if _planet.vegetation_grid == null or airborne_distance > _far + 150.0:
+		_planned_profile = -1
+		for tile: Node in _tiles.values():
+			tile.queue_free()
+		_tiles.clear()
+		_pending.clear()
+		_detail_queue.clear()
+		set_physics_process(false)
 		return
-	var mode := QualityManager.current_preset
-	var quality_changed := mode != _quality
-	_quality = mode
-	var ratio := QualityManager.scatter_density_multiplier
+	var lead := (direction * radius + (velocity.slide(direction) * 1.35).limit_length(210.0)).normalized()
+	if (_planned_profile == QualityManager.current_preset
+			and direction.distance_to(_planned_focus) * radius < 3.0
+			and lead.distance_to(_planned_lead) * radius < 10.0
+			and absf(clearance - _planned_height) < 4.0
+			and absf(_far - _planned_range) < 7.0):
+		return
+	_planned_profile = QualityManager.current_preset
+	_planned_focus = direction
+	_planned_lead = lead
+	_planned_height = clearance
+	_planned_range = _far
+	var horizontal_reach := sqrt(maxf(0, pow(_far + 70.0, 2) - airborne_distance * airborne_distance))
+	var desired: Dictionary = _planet.vegetation_grid.candidates(direction, lead, horizontal_reach / radius)
+	var missing := []
+	_detail_queue.clear()
+	for key in desired:
+		if not _tiles.has(key):
+			missing.append(key)
+	missing.sort_custom(func(a, b): return desired[a] < desired[b])
+	_pending = missing
 	for key: Vector3i in _tiles.keys():
 		var tile: MultiMeshInstance3D = _tiles[key]
-		if _deadline[key] <= _clock:
+		var distance := _distance(key)
+		if distance > _far + 148.0 and not desired.has(key):
 			tile.queue_free()
 			_tiles.erase(key)
-			continue
-		var horizontal: float = _focus.distance_to(Vector3(key).normalized()) * _planet.data.radius
-		var distance := Vector2(horizontal, maxf(_altitude, 0.0) * 0.46).length()
-		var limit := _draw_distance()
-		var visibility := 1.0 - smoothstep(limit * 0.69, limit, distance)
-		var bodies: StaticBody3D = tile.get_node("Trunks")
-		var collisions := horizontal < 89.0 and _altitude < 65.0
-		var layer := 32 if collisions else 0
-		if bodies.collision_layer != layer:
-			bodies.collision_layer = layer
-		for node: Node in tile.get_children():
-			if node is MultiMeshInstance3D:
-				_update_batch(node, distance, ratio, visibility, quality_changed)
-		_update_batch(tile, distance, ratio, visibility, quality_changed)
-		for shape_index in range(bodies.get_child_count()):
-			# Collision order matches the primary canopy batch.
-			var collider := bodies.get_child(shape_index) as CollisionShape3D
-			var inactive := shape_index >= tile.multimesh.visible_instance_count
-			if collider.disabled != inactive:
-				collider.disabled = inactive
-	for key in _deadline.keys():
-		if _deadline[key] <= _clock:
-			_deadline.erase(key)
+		else:
+			_update_tile(key, tile, distance)
+	_detail_queue.sort_custom(func(a, b): return _distance(a) < _distance(b))
+	set_physics_process(not _pending.is_empty() or not _detail_queue.is_empty())
 
 
-func _evict_unwanted() -> void:
-	# Retain the overlap while there is room. When full, recycle the sector already
-	# outside the view and with the shortest remaining lifetime.
-	var candidate := Vector3i.ZERO
-	var expiration := _clock + 0.95
-	var radius: float = _planet.data.radius
-	for key: Vector3i in _tiles:
-		var distance := Vector2(_focus.distance_to(Vector3(key).normalized()) * radius, _altitude * 0.46).length()
-		if distance > _draw_distance() and float(_deadline[key]) < expiration:
-			expiration = _deadline[key]
-			candidate = key
-	if candidate != Vector3i.ZERO:
-		_tiles[candidate].queue_free()
-		_tiles.erase(candidate)
-		_deadline.erase(candidate)
+func _distance(key: Vector3i) -> float:
+	var horizontal: float = _focus.distance_to(_planet.vegetation_grid.centers[key]) * _planet.data.radius
+	return Vector2(horizontal, maxf(_altitude, 0.0) * 0.55).length()
 
 
-func _update_batch(node: MultiMeshInstance3D, distance: float, ratio: float, visibility: float, changed: bool) -> void:
-	var lod_distance := float(node.get_meta("detail_distance", 120.0))
-	if node.has_meta("compact"):
-		var compact: bool = _quality == QualityManager.Preset.ECONOMY or distance > lod_distance
-		if changed or compact != bool(node.get_meta("low_detail", false)):
-			node.multimesh.mesh = node.get_meta("compact") if compact else node.get_meta("original")
-			node.set_meta("low_detail", compact)
-	if node.has_meta("understory"):
-		visibility *= 1.0 - smoothstep(lod_distance * 0.72, lod_distance, distance)
-	node.multimesh.visible_instance_count = roundi(float(node.get_meta("planted")) * visibility * ratio)
+func _physics_process(_delta: float) -> void:
+	if _planet.vegetation_grid == null:
+		return
+	# At most one undergrowth sector per tick; cheaper canopy sectors lead the flight.
+	var began := Time.get_ticks_usec()
+	if not _detail_queue.is_empty():
+		var key: Vector3i = _detail_queue.pop_front()
+		var tile: MultiMeshInstance3D = _tiles[key]
+		if not tile.has_meta("details"):
+			_add_details(tile, key)
+			_update_tile(key, tile, _distance(key))
+	for step in range(4):
+		if _pending.is_empty() or (step > 0 and Time.get_ticks_usec() - began >= 1600):
+			break
+		var key: Vector3i = _pending.pop_front()
+		var tile := _plant_tile(key)
+		_tiles[key] = tile
+		_update_tile(key, tile, _distance(key))
+	if _pending.is_empty() and _detail_queue.is_empty():
+		set_physics_process(false)
+
+
+func _update_tile(key: Vector3i, tile: MultiMeshInstance3D, distance: float) -> void:
+	var profile := QualityManager.detail_distance_multiplier
+	var mid_end := PROXY.compact_range(profile)
+	var previous := int(tile.get_meta("lod", 2))
+	var lod := PROXY.lod_at(distance, previous, profile)
+	if previous != lod or not tile.has_meta("lod"):
+		tile.multimesh.mesh = tile.get_meta("variants")[lod]
+		tile.set_meta("lod", lod)
+	tile.visible = distance <= _far + (36.0 if tile.visible else 0.0)
+	var mode := QualityManager.current_preset
+	var changed: bool = tile.get_meta("profile", -1) != mode
+	if changed:
+		_set_density(tile)
+		tile.set_meta("profile", mode)
+	if not tile.has_meta("details"):
+		if distance < mid_end + 45.0:
+			_detail_queue.append(key)
+		return
+	for child in tile.get_children():
+		if child is MultiMeshInstance3D:
+			var end := maxf(float(child.get_meta("reach")) * (0.65 + 0.5 * profile), float(tile.get_meta("extent")) + 58.0)
+			child.visible = distance < end + (22.0 if child.visible else 0.0)
+			if changed:
+				_set_density(child)
+		elif child is StaticBody3D:
+			child.collision_layer = 32 if distance < 115.0 and _altitude < 75.0 else 0
+			if changed:
+				_sync_colliders(tile, child)
+	if distance > mid_end + 120.0:
+		for child in tile.get_children():
+			tile.remove_child(child)
+			child.queue_free()
+		tile.remove_meta("details")
+
+
+func _set_density(batch: MultiMeshInstance3D) -> void:
+	batch.multimesh.visible_instance_count = roundi(batch.multimesh.instance_count * QualityManager.scatter_density_multiplier)
 
 
 func _load_mesh(path: String, compact := false) -> Mesh:
@@ -198,107 +196,131 @@ func _colored_rock(original: Mesh) -> Mesh:
 	return stone
 
 
-func _leading_axis(direction: Vector3) -> Vector3:
-	var absolute := direction.abs()
-	if absolute.x >= maxf(absolute.y, absolute.z):
-		return Vector3(signf(direction.x), 0, 0)
-	if absolute.y >= absolute.z:
-		return Vector3(0, signf(direction.y), 0)
-	return Vector3(0, 0, signf(direction.z))
-
-
-func _plant_tile(key: Vector3i, center: Vector3) -> MultiMeshInstance3D:
+func _plant_tile(key: Vector3i) -> MultiMeshInstance3D:
 	_prepare_models()
-	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(key) + _planet.data.seed_value
-	var trunks := StaticBody3D.new()
-	trunks.name = "Trunks"
-	trunks.collision_layer = 0
-	trunks.collision_mask = 0
-	var reference := Vector3.UP if absf(center.y) < 0.94 else Vector3.RIGHT
-	var right := reference.cross(center).normalized()
-	var tangent := center.cross(right)
-	var radius: float = _planet.data.radius
-	var terrain := _planet.get_world_3d().direct_space_state as PhysicsDirectSpaceState3D
-	var tile: MultiMeshInstance3D
-	for variant in range(_models.size()):
-		var count := [42, 30, 16, 25, 23][variant] as int
-		var batch := MultiMesh.new()
-		batch.transform_format = MultiMesh.TRANSFORM_3D
-		var original := _models[variant]
-		var compact := _compact[variant]
-		if variant == 0 and not _alternate_tree.is_empty() and posmod(hash(key), 3) == 0:
-			original = _alternate_tree[0]
-			compact = _alternate_tree[1]
-		batch.mesh = compact
-		batch.instance_count = count
-		var planted := 0
-		for _sample in range(count):
-			var offset := right * rng.randf_range(-35.0, 35.0) + tangent * rng.randf_range(-35.0, 35.0)
-			var direction := (center * radius + offset).normalized()
-			if _reserved(direction, radius):
-				continue
-			var surface: float = _planet.get_surface_radius_at_dir(direction)
-			var biome: int = _planet.get_biome(direction, surface - radius)
-			var chance := _density(variant, biome)
-			if rng.randf() > chance:
-				continue
-			var world_point: Vector3 = _planet.global_position + direction * surface
-			var ray := PhysicsRayQueryParameters3D.create(world_point + direction * 70.0, world_point - direction * 70.0, 1)
-			var hit := terrain.intersect_ray(ray)
-			if hit.is_empty():
-				continue
-			world_point = hit["position"]
-			if direction.dot(hit["normal"]) < 0.79:
-				continue
-			if _planet.data.has_ocean and world_point.distance_to(_planet.global_position) < radius + _planet.data.ocean_level_offset + 1.4:
-				continue
-			var size := rng.randf_range(0.68, 1.51)
-			if variant == 0 and _models.size() > 3:
-				size *= float(_planet.data.tree_height_multiplier)
-			if variant == 0 and _models.size() == 3:
-				size *= 1.65
-			var basis := Basis.looking_at(tangent.slide(direction), direction).rotated(direction, rng.randf_range(0.0, TAU))
-			var scale := Vector3(size * rng.randf_range(0.88, 1.24), size, size)
-			var position: Vector3 = world_point - _planet.global_position - direction * 0.14
-			batch.set_instance_transform(planted, Transform3D(basis * Basis.from_scale(scale), position))
-			if variant == 0:
-				var shape := CylinderShape3D.new()
-				shape.radius = maxf(scale.x, scale.z) * (0.48 if _models.size() == 3 else 0.31)
-				shape.height = scale.y * (0.84 if _models.size() == 3 else 4.12)
-				var collider := CollisionShape3D.new()
-				collider.shape = shape
-				trunks.add_child(collider)
-				collider.transform = Transform3D(basis, position + direction * shape.height * 0.5)
-			planted += 1
-		batch.visible_instance_count = 0
+	if _planet.is_aurelia() and _village == Vector3.ZERO:
+		_village = _planet._landing.village_direction()
+	var original := _models[0]
+	var compact := _compact[0]
+	if not _alternate_tree.is_empty() and posmod(hash(key), 3) == 0:
+		original = _alternate_tree[0]
+		compact = _alternate_tree[1]
+	if not _proxies.has(original):
+		var tint: Color = _planet.data.tree_canopy_color.darkened(0.24)
+		var rocky := _models.size() == 3
+		if rocky:
+			tint = _planet.data.highland_color
+		_proxies[original] = PROXY.build(original, tint, _planet.data.landscape == PlanetData.Landscape.GLACIUS, rocky)
+	var tile := MultiMeshInstance3D.new()
+	var center: Vector3 = _planet.vegetation_grid.centers[key]
+	tile.position = center * _planet.data.radius
+	var extent := 0.0
+	for corner: Vector2 in [Vector2.ZERO, Vector2(2, 0), Vector2(0, 2), Vector2(2, 2)]:
+		var edge: Vector3 = _planet.vegetation_grid.point(key, corner.x, corner.y)
+		extent = maxf(extent, center.distance_to(edge.normalized()) * _planet.data.radius)
+	tile.set_meta("extent", extent)
+	tile.set_meta("variants", [original, compact, _proxies[original]])
+	var trunk_poses: Array[Transform3D] = []
+	tile.multimesh = _batch(key, 0, tile.position, _proxies[original], trunk_poses)
+	tile.set_meta("trunk_poses", trunk_poses)
+	tile.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	tile.hide()
+	add_child(tile)
+	return tile
+
+
+func _add_details(tile: MultiMeshInstance3D, key: Vector3i) -> void:
+	tile.set_meta("details", true)
+	var body := StaticBody3D.new()
+	body.name = "Trunks"
+	body.collision_mask = 0
+	body.collision_layer = 0
+	_sync_colliders(tile, body)
+	tile.add_child(body)
+	for variant in range(1, _models.size() + 1):
+		var grass := variant == _models.size()
+		if grass and not (_planet.is_aurelia() or _planet.data.landscape == PlanetData.Landscape.VERIDIAN):
+			break
+		if grass and _grass_mesh == null:
+			_grass_mesh = _build_grass()
+		var mesh := _grass_mesh if grass else _compact[variant]
+		var batch := _batch(key, variant, tile.position, mesh)
+		if batch.instance_count == 0:
+			continue
 		var node := MultiMeshInstance3D.new()
 		node.multimesh = batch
-		node.set_meta("planted", planted)
+		node.set_meta("reach", 92.0 if grass else (155.0 if variant <= 2 else 104.0))
 		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		if original != compact:
-			node.set_meta("original", original)
-			node.set_meta("compact", compact)
-			node.set_meta("low_detail", true)
+		node.hide()
+		tile.add_child(node)
+		_set_density(node)
+
+
+func _sync_colliders(tile: MultiMeshInstance3D, body: StaticBody3D) -> void:
+	for i in range(body.get_child_count()):
+		body.get_child(i).disabled = i >= tile.multimesh.visible_instance_count
+	for i in range(body.get_child_count(), tile.multimesh.visible_instance_count):
+		var transform: Transform3D = tile.get_meta("trunk_poses")[i]
+		var scale := transform.basis.get_scale()
+		var shape := CylinderShape3D.new()
+		shape.radius = maxf(scale.x, scale.z) * (0.48 if _models.size() == 3 else 0.31)
+		shape.height = scale.y * (0.84 if _models.size() == 3 else 4.12)
+		var collider := CollisionShape3D.new()
+		collider.shape = shape
+		collider.transform = Transform3D(transform.basis.orthonormalized(), transform.origin + transform.basis.y.normalized() * shape.height * 0.5)
+		body.add_child(collider)
+
+
+func _batch(key: Vector3i, variant: int, anchor: Vector3, model: Mesh, transforms: Array[Transform3D] = []) -> MultiMesh:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(Vector4i(key.x, key.y, key.z, variant)) + _planet.data.seed_value
+	var grass := variant == _models.size()
+	var attempts: int = (240 if _planet.is_aurelia() else 190) if grass else [42, 30, 16, 25, 23][variant]
+	var tints := PackedColorArray()
+	var radius: float = _planet.data.radius
+	for sample in range(attempts):
+		var u := rng.randf() * 2.0
+		var v := rng.randf() * 2.0
+		var point: Vector3 = _planet.vegetation_grid.point(key, u, v)
+		var up := point.normalized()
+		if _reserved(up, radius):
+			continue
+		var elevation := point.length() - radius
+		if _planet.data.has_ocean and elevation <= _planet.data.ocean_level_offset + 1.4:
+			continue
+		if grass:
+			if sin(u * 10.0) * cos(v * 8.8) < -0.28:
+				continue
+		elif rng.randf() > _density(variant, _planet.get_biome(up, elevation)):
+			continue
+		var normal: Vector3 = _planet.vegetation_grid.normal(key, u, v)
+		if up.dot(normal) < (0.82 if grass else 0.79):
+			continue
+		var size := rng.randf_range(0.68, 1.51)
 		if variant == 0:
-			tile = node
-			tile.add_child(trunks)
-			add_child(tile)
-		elif planted > 0:
-			node.set_meta("understory", true)
-			node.set_meta("detail_distance", 146.0 if variant == 1 or variant == 2 else 91.0)
-			tile.add_child(node)
-		else:
-			node.free()
-	if _planet.is_aurelia() or _planet.data.landscape == PlanetData.Landscape.VERIDIAN:
-		_plant_ground_cover(tile, center, right, tangent, rng, terrain)
-	return tile
+			size *= float(_planet.data.tree_height_multiplier) if _models.size() > 3 else 1.65
+		var ref := Vector3.UP if absf(up.y) < 0.9 else Vector3.RIGHT
+		var facing := Basis.looking_at(ref.cross(up), up).rotated(up, rng.randf_range(0.0, TAU))
+		var scale := Vector3(rng.randf_range(0.88, 1.24), 1.0, 1.0) * size
+		transforms.append(Transform3D(facing * Basis.from_scale(scale), point - anchor - up * (0.055 if grass else 0.14)))
+		if grass:
+			tints.append(Color("#6d9a44").lerp(Color("#b1bc5d"), rng.randf_range(0.0, 0.75)))
+	var batch := MultiMesh.new()
+	batch.transform_format = MultiMesh.TRANSFORM_3D
+	batch.use_colors = grass
+	batch.mesh = model
+	batch.instance_count = transforms.size()
+	for i in range(transforms.size()):
+		batch.set_instance_transform(i, transforms[i])
+		if grass:
+			batch.set_instance_color(i, tints[i])
+	return batch
 
 
 func _reserved(direction: Vector3, radius: float) -> bool:
 	return _planet.is_landmark_area(direction) or (_planet.is_aurelia() and (
 		direction.distance_to(Vector3(0.180171244, 0.960913302, 0.210199785)) * radius < 48.0
-		or _planet.is_village_area(direction) or _planet.is_forest_area(direction)))
+		or direction.distance_to(_village) * radius < 34.0 or _planet.is_forest_area(direction)))
 
 
 func _density(variant: int, biome: int) -> float:
@@ -314,55 +336,6 @@ func _density(variant: int, biome: int) -> float:
 		2: return [0.18, 0.26, 0.70, 0.55, 0.18][biome]
 		3: return [0.05, 0.76, 0.03, 0.27, 0.21][biome]
 	return [0.30, 0.18, 0.06, 0.12, 0.87][biome]
-
-
-func _plant_ground_cover(tile: Node3D, center: Vector3, right: Vector3, tangent: Vector3,
-		rng: RandomNumberGenerator, terrain: PhysicsDirectSpaceState3D) -> void:
-	if _grass_mesh == null:
-		_grass_mesh = _build_grass()
-	var count := 240 if _planet.is_aurelia() else 190
-	var batch := MultiMesh.new()
-	batch.transform_format = MultiMesh.TRANSFORM_3D
-	batch.use_colors = true
-	batch.mesh = _grass_mesh
-	batch.instance_count = count
-	var planet_radius: float = _planet.data.radius
-	var anchor := center * planet_radius
-	var planted := 0
-	for i in range(count):
-		# Groups of tufts leave space for bare paths and expose the grass texture between blades.
-		var x := rng.randf_range(-37.5, 37.5)
-		var y := rng.randf_range(-37.5, 37.5)
-		if sin(x * 0.27) * cos(y * 0.23) < -0.28:
-			continue
-		var direction := (anchor + right * x + tangent * y).normalized()
-		if _reserved(direction, planet_radius):
-			continue
-		var altitude: float = _planet.get_surface_radius_at_dir(direction)
-		var world: Vector3 = _planet.global_position + direction * altitude
-		var ray := PhysicsRayQueryParameters3D.create(world + direction * 55.0, world - direction * 55.0, 1)
-		var hit := terrain.intersect_ray(ray)
-		if hit.is_empty():
-			continue
-		var point: Vector3 = hit["position"] - _planet.global_position
-		if point.length() <= planet_radius + _planet.data.ocean_level_offset + 1.4:
-			continue
-		if direction.dot(hit["normal"]) < 0.82:
-			continue
-		var size := rng.randf_range(0.60, 1.58)
-		var basis := Basis.looking_at(tangent.slide(direction), direction).rotated(direction, rng.randf_range(0.0, TAU))
-		batch.set_instance_transform(planted, Transform3D(basis.scaled(Vector3.ONE * size), point - anchor - direction * 0.055))
-		batch.set_instance_color(planted, Color("#6d9a44").lerp(Color("#b1bc5d"), rng.randf_range(0.0, 0.75)))
-		planted += 1
-	batch.visible_instance_count = 0
-	var grass := MultiMeshInstance3D.new()
-	grass.multimesh = batch
-	grass.position = anchor
-	grass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	grass.set_meta("planted", planted)
-	grass.set_meta("understory", true)
-	grass.set_meta("detail_distance", 78.0)
-	tile.add_child(grass)
 
 
 func _build_grass() -> ArrayMesh:
